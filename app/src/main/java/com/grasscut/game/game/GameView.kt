@@ -111,8 +111,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             bulletEnergyBmp = BitmapFactory.decodeStream(context.assets.open("bullet_energy.png"))
             bulletKnifeBmp = BitmapFactory.decodeStream(context.assets.open("bullet_knife.png"))
             bulletFireballBmp = BitmapFactory.decodeStream(context.assets.open("bullet_fireball.png"))
-            // 背景贴图
-            backgroundBmp = BitmapFactory.decodeStream(context.assets.open("background_tile.png"))
+            // 背景贴图（整张，不裁剪）
+            backgroundBmp = BitmapFactory.decodeStream(context.assets.open("background_full.png"))
         } catch (e: Exception) {
             // 贴图加载失败，回退几何图形
         }
@@ -348,27 +348,18 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
     // ============ 地图 ============
     private fun drawMap(canvas: Canvas) {
-        val tileSize = 400f  // 每块背景图在世界坐标中的大小
-        val startX = (cameraX / tileSize).toInt() * tileSize
-        val startY = (cameraY / tileSize).toInt() * tileSize
-        val endX = cameraX + canvasWidth + tileSize
-        val endY = cameraY + canvasHeight + tileSize
-
         if (backgroundBmp != null) {
-            // 用背景图平铺
+            // 整张背景图拉伸覆盖整个地图，只画一次
             val src = Rect(0, 0, backgroundBmp!!.width, backgroundBmp!!.height)
-            var x = startX
-            while (x < endX) {
-                var y = startY
-                while (y < endY) {
-                    val dst = RectF(x, y, x + tileSize, y + tileSize)
-                    canvas.drawBitmap(backgroundBmp!!, src, dst, null)
-                    y += tileSize
-                }
-                x += tileSize
-            }
+            val dst = RectF(0f, 0f, GameConfig.MAP_WIDTH, GameConfig.MAP_HEIGHT)
+            canvas.drawBitmap(backgroundBmp!!, src, dst, null)
         } else {
             // 回退：棋盘格
+            val tileSize = 400f
+            val startX = (cameraX / tileSize).toInt() * tileSize
+            val startY = (cameraY / tileSize).toInt() * tileSize
+            val endX = cameraX + canvasWidth + tileSize
+            val endY = cameraY + canvasHeight + tileSize
             var x = startX
             while (x < endX) {
                 var y = startY
