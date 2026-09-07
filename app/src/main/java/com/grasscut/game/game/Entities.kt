@@ -170,9 +170,102 @@ class Particle(
     var x: Float, var y: Float,
     var vx: Float, var vy: Float,
     var color: Int, var size: Float,
-    var lifetime: Float = 0.4f
+    var lifetime: Float = 0.4f,
+    var gravity: Float = 0f,
+    var drag: Float = 0.98f,
+    var startColor: Int = color,
+    var endColor: Int = color
 ) {
+    var age = 0f
     var alive = true
+
+    fun update(dt: Float) {
+        age += dt
+        if (age >= lifetime) { alive = false; return }
+        vx *= drag
+        vy = vy * drag + gravity * dt
+        x += vx * dt
+        y += vy * dt
+    }
+
+    val currentColor: Int
+        get() {
+            val t = (age / lifetime).coerceIn(0f, 1f)
+            return lerpColor(startColor, endColor, t)
+        }
+
+    val currentSize: Float
+        get() = size * (1f - age / lifetime * 0.5f)
+}
+
+// 颜色插值工具
+fun lerpColor(c1: Int, c2: Int, t: Float): Int {
+    val r1 = (c1 shr 16) and 0xFF
+    val g1 = (c1 shr 8) and 0xFF
+    val b1 = c1 and 0xFF
+    val a1 = (c1 shr 24) and 0xFF
+    val r2 = (c2 shr 16) and 0xFF
+    val g2 = (c2 shr 8) and 0xFF
+    val b2 = c2 and 0xFF
+    val a2 = (c2 shr 24) and 0xFF
+    val r = (r1 + (r2 - r1) * t).toInt()
+    val g = (g1 + (g2 - g1) * t).toInt()
+    val b = (b1 + (b2 - b1) * t).toInt()
+    val a = (a1 + (a2 - a1) * t).toInt()
+    return (a shl 24) or (r shl 16) or (g shl 8) or b
+}
+
+// ============ 爆炸特效 ============
+class Explosion(
+    var x: Float, var y: Float,
+    var maxRadius: Float,
+    var color: Int,
+    var lifetime: Float = 0.3f
+) {
+    var age = 0f
+    val alive get() = age < lifetime
+    val radius get() = maxRadius * (age / lifetime)
+    val alpha get() = (255 * (1 - age / lifetime)).toInt().coerceIn(0, 255)
+    val lineWidth get() = 8f * (1 - age / lifetime) + 1f
+    fun update(dt: Float) { age += dt }
+}
+
+// ============ 闪电特效 ============
+class LightningBolt(
+    var startX: Float, var startY: Float,
+    var endX: Float, var endY: Float,
+    var lifetime: Float = 0.2f,
+    var width: Float = 3f,
+    var color: Int = 0xFFEB3BFF.toInt()
+) {
+    var age = 0f
+    var points: List<Pair<Float, Float>> = generatePath()
+    val alive get() = age < lifetime
+
+    private fun generatePath(): List<Pair<Float, Float>> {
+        var pts = mutableListOf(startX to startY, endX to endY)
+        val dist = hypot(endX - startX, endY - startY)
+        val offset = (dist * 0.08f).coerceAtLeast(15f)
+        repeat(4) {
+            val newPts = mutableListOf<Pair<Float, Float>>()
+            for (i in 0 until pts.size - 1) {
+                val (x1, y1) = pts[i]
+                val (x2, y2) = pts[i + 1]
+                val mx = (x1 + x2) / 2 + (Math.random().toFloat() - 0.5f) * offset
+                val my = (y1 + y2) / 2 + (Math.random().toFloat() - 0.5f) * offset
+                newPts.add(pts[i])
+                newPts.add(mx to my)
+            }
+            newPts.add(pts.last())
+            pts = newPts
+        }
+        return pts
+    }
+
+    fun update(dt: Float) {
+        age += dt
+        if (Math.random() < 0.5f) points = generatePath()
+    }
 }
 
 // ============ 空间分区（碰撞优化） ============

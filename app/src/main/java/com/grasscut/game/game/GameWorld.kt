@@ -17,6 +17,28 @@ class GameWorld {
     val xpGems = mutableListOf<XpGem>()
     val floatingTexts = mutableListOf<FloatingText>()
     val particles = mutableListOf<Particle>()
+    val explosions = mutableListOf<Explosion>()
+    val orbitingKnives = mutableListOf<OrbitingKnife>()
+    val meteorStrikes = mutableListOf<MeteorStrike>()
+
+    // 光环进化标志（用于渲染3层旋转环）
+    var auraEvolved = false
+
+    // 进化提示（名称 + 时间戳）
+    var evolutionNotice: Pair<String, Long>? = null
+
+    // 慢动作
+    var timeScale = 1f
+    var slowMoDuration = 0f
+
+    // 屏幕震动（GameView 消费）
+    var shakeAmount = 0f
+    var shakeDuration = 0f
+
+    // 全屏闪光（GameView 消费）
+    var flashColor = 0
+    var flashAlpha = 0
+    var flashDuration = 0f
 
     // 输入方向（由 GameView 设置）
     var inputX = 0f
@@ -41,6 +63,43 @@ class GameWorld {
 
     fun playSound(name: String) {
         soundEvents.add(name)
+    }
+
+    // 触发爆炸（冲击波环+粒子+震动+闪光）
+    fun triggerExplosion(x: Float, y: Float, radius: Float, color: Int, particleCount: Int = 30) {
+        explosions.add(Explosion(x, y, radius, color))
+        // 粒子爆发
+        val count = particleCount.coerceAtMost(50)
+        for (i in 0 until count) {
+            val angle = Random.nextFloat() * Math.PI.toFloat() * 2
+            val speed = 100f + Random.nextFloat() * 300f
+            particles.add(Particle(
+                x, y,
+                cos(angle) * speed, sin(angle) * speed,
+                color, 4f + Random.nextFloat() * 4f,
+                0.4f + Random.nextFloat() * 0.4f,
+                gravity = 200f, drag = 0.96f,
+                startColor = color, endColor = 0xFFFFFFFF.toInt()
+            ))
+        }
+        triggerShake(radius * 0.03f, 0.2f)
+        triggerFlash(0xFFFFFFFF.toInt(), 0.08f)
+    }
+
+    fun triggerShake(amount: Float, duration: Float) {
+        shakeAmount = maxOf(shakeAmount, amount)
+        shakeDuration = maxOf(shakeDuration, duration)
+    }
+
+    fun triggerFlash(color: Int, duration: Float) {
+        flashColor = color
+        flashAlpha = 180
+        flashDuration = duration
+    }
+
+    fun triggerSlowMotion(duration: Float) {
+        slowMoDuration = duration
+        timeScale = 0.2f
     }
 
     // 生成计时
@@ -69,8 +128,11 @@ class GameWorld {
         player.maxHpBonus = 0f; player.critChance = 0f
         enemies.clear(); bullets.clear(); xpGems.clear()
         floatingTexts.clear(); particles.clear(); lightningBolts.clear(); soundEvents.clear()
+        explosions.clear(); orbitingKnives.clear(); meteorStrikes.clear()
         spawnTimer = 0f; eliteWaveTimer = 0f; bossSpawned = false
-        auraActive = false
+        auraActive = false; auraEvolved = false
+        timeScale = 1f; slowMoDuration = 0f
+        evolutionNotice = null
     }
 
     fun pause() {
@@ -92,9 +154,16 @@ class GameWorld {
             return
         }
 
-        gameTime += dt
-        if (pickupSoundTimer > 0) pickupSoundTimer -= dt
-        if (hurtFlashTimer > 0) hurtFlashTimer -= dt
+        // 慢动作处理
+        if (slowMoDuration > 0) {
+            slowMoDuration -= dt
+            if (slowMoDuration <= 0) timeScale = 1f
+        }
+        val sdt = dt * timeScale  // 缩放后的游戏时间
+
+        gameTime += sdt
+        if (pickupSoundTimer > 0) pickupSoundTimer -= sdt
+        if (hurtFlashTimer > 0) hurtFlashTimer -= sdt
 
         // 胜利条件
         if (gameTime >= GameConfig.GAME_DURATION && enemies.isEmpty()) {
@@ -103,13 +172,21 @@ class GameWorld {
             return
         }
 
-        updatePlayer(dt)
-        updateSkills(dt)
-        updateBullets(dt)
-        updateEnemies(dt)
-        updateXpGems(dt)
-        updateEffects(dt)
-        spawnEnemies(dt)
+        updatePlayer(sdt)
+        updateSkills(sdt)
+        updateBullets(sdt)
+        updateEnemies(sdt)
+        updateXpGems(sdt)
+        // 超武：环绕飞刀和陨石
+        for (knife in orbitingKnives) knife.update(player, this, sdt)
+        val mIter = meteorStrikes.iterator()
+        while (mIter.hasNext()) {
+            val m = mIter.next()
+            m.update(this, dt)
+            if (!m.alive) mIter.remove()
+        }
+        updateEffects(dt)  // 特效用真实时间（慢动作时特效正常速度）
+        spawnEnemies(sdt)
         cleanup()
 
         // 玩家死亡
@@ -212,6 +289,12 @@ class GameWorld {
     }
 
     private fun explode(x: Float, y: Float, radius: Float, damage: Float) {
+        // 爆炸冲击波环
+        explosions.add(Explosion(x, y, radius, 0xFFFF6D00.toInt(), 0.35f))
+        // 屏幕震动
+        triggerShake(radius * 0.04f, 0.2f)
+        // 全屏闪光
+        triggerFlash(0xFFFF9800.toInt(), 0.06f)
         // 爆炸粒子（增强：更多、更大、更亮、多色）
         val explosionColors = intArrayOf(0xFFFF5722.toInt(), 0xFFFF9800.toInt(), 0xFFFFEB3B.toInt(), 0xFFFFF176.toInt())
         for (i in 0..35) {
@@ -222,7 +305,8 @@ class GameWorld {
                 cos(angle) * speed, sin(angle) * speed,
                 explosionColors[random.nextInt(explosionColors.size)],
                 5 + random.nextFloat() * 8,
-                0.35f + random.nextFloat() * 0.25f
+                0.35f + random.nextFloat() * 0.25f,
+                gravity = 100f, drag = 0.95f
             ))
         }
         // 中心闪光
@@ -360,23 +444,38 @@ class GameWorld {
             ft.alpha = (ft.lifetime / 0.8f * 255).toInt().coerceIn(0, 255)
             if (ft.lifetime <= 0) ftIter.remove()
         }
-        // 粒子
+        // 粒子（使用新的 update 方法，包含重力/阻力/颜色渐变）
         val pIter = particles.iterator()
         while (pIter.hasNext()) {
             val p = pIter.next()
-            p.x += p.vx * dt
-            p.y += p.vy * dt
-            p.vx *= 0.95f
-            p.vy *= 0.95f
-            p.lifetime -= dt
-            if (p.lifetime <= 0) pIter.remove()
+            p.update(dt)
+            if (!p.alive) pIter.remove()
+        }
+        // 爆炸
+        val eIter = explosions.iterator()
+        while (eIter.hasNext()) {
+            val e = eIter.next()
+            e.update(dt)
+            if (!e.alive) eIter.remove()
         }
         // 闪电
         val lIter = lightningBolts.iterator()
         while (lIter.hasNext()) {
             val l = lIter.next()
-            l.lifetime -= dt
-            if (l.lifetime <= 0) lIter.remove()
+            l.update(dt)
+            if (!l.alive) lIter.remove()
+        }
+        // 屏幕震动衰减
+        if (shakeDuration > 0) {
+            shakeDuration -= dt
+            shakeAmount *= 0.92f
+            if (shakeDuration <= 0) shakeAmount = 0f
+        }
+        // 全屏闪光衰减
+        if (flashDuration > 0) {
+            flashDuration -= dt
+            flashAlpha = (180 * (flashDuration / 0.1f)).toInt().coerceIn(0, 255)
+            if (flashDuration <= 0) flashAlpha = 0
         }
     }
 
@@ -459,9 +558,28 @@ class GameWorld {
             val angle = (i.toFloat() / shockCount) * 6.28f
             particles.add(Particle(e.x, e.y, cos(angle)*shockSpeed, sin(angle)*shockSpeed, 0xFFFFFFFF.toInt(), 4f, 0.25f))
         }
+        // 爆炸特效（冲击波环）
+        when (e.type) {
+            EnemyType.BOSS -> {
+                triggerExplosion(e.x, e.y, 400f, 0xFFFF6D00.toInt(), 50)
+                triggerSlowMotion(0.4f)
+                playSound("death")
+            }
+            EnemyType.ELITE -> {
+                triggerExplosion(e.x, e.y, 250f, 0xFFD500F9.toInt(), 35)
+                triggerSlowMotion(0.25f)
+            }
+            EnemyType.TANK -> {
+                triggerExplosion(e.x, e.y, 150f, 0xFF9D00FF.toInt(), 20)
+            }
+            else -> {
+                // 普通敌人小爆炸
+                explosions.add(Explosion(e.x, e.y, 60f, color, 0.2f))
+            }
+        }
     }
 
-    fun castLightning(startX: Float, startY: Float, firstTarget: Enemy, jumps: Int, damage: Float) {
+    fun castLightning(startX: Float, startY: Float, firstTarget: Enemy, jumps: Int, damage: Float, powerful: Boolean = false) {
         var current = firstTarget
         val hit = mutableSetOf<Enemy>()
         var prevX = startX
@@ -470,21 +588,28 @@ class GameWorld {
         for (i in 0 until jumps) {
             if (!current.alive) break
             hit.add(current)
-            lightningBolts.add(LightningBolt(prevX, prevY, current.x, current.y))
+            val boltWidth = if (powerful) 8f else 3f
+            val boltColor = if (powerful) 0xFF00E5FF.toInt() else 0xFFFFEB3B.toInt()
+            lightningBolts.add(LightningBolt(prevX, prevY, current.x, current.y, width = boltWidth, color = boltColor))
 
             var dmg = damage
             if (random.nextFloat() < player.critChance) dmg *= player.critDamage
             val killed = current.takeDamage(dmg)
             addFloatingText(current.x, current.y - current.radius - 5,
-                dmg.toInt().toString(), 0xFFFFEB3B.toInt(), size = 56f)
-            if (killed) onEnemyKilled(current)
+                dmg.toInt().toString(), if (powerful) 0xFF00E5FF.toInt() else 0xFFFFEB3B.toInt(), size = if (powerful) 64f else 56f)
+            if (killed) {
+                onEnemyKilled(current)
+            } else if (powerful) {
+                // 超武：每个命中点触发小爆炸
+                triggerExplosion(current.x, current.y, 80f, 0xFF00E5FF.toInt(), 10)
+            }
 
             prevX = current.x
             prevY = current.y
 
             // 找下一个目标
             var next: Enemy? = null
-            var minDist = 250f
+            var minDist = if (powerful) 350f else 250f
             for (e in enemies) {
                 if (!e.alive || hit.contains(e)) continue
                 val d = current.distTo(e)
@@ -541,16 +666,97 @@ class GameWorld {
             }
             is StatUpgrade -> option.apply(player)
         }
+        // 升级后检测超武进化
+        checkEvolutions()
         state = GameState.PLAYING
     }
 
     private fun cleanup() {
         enemies.removeAll { !it.alive }
     }
+
+    // 超武进化检测：每次升级后调用
+    fun checkEvolutions() {
+        for (skill in player.skills) {
+            if (skill.evolved) continue
+            if (skill.level < 8) continue
+            val canEvolve = when (skill) {
+                is BasicAttackSkill -> player.atkSpeedBonus >= 3f
+                is KnifeSkill -> player.atkBonus >= 30f
+                is FireballSkill -> player.pickupRangeBonus >= 30f
+                is LightningSkill -> player.critChance >= 0.15f
+                is AuraSkill -> player.maxHpBonus >= 30f
+                else -> false
+            }
+            if (canEvolve) {
+                skill.evolved = true
+                evolutionNotice = skill.evolutionName to System.currentTimeMillis()
+                playSound("levelup")
+                triggerFlash(0xFF00E5FF.toInt(), 0.2f)
+                triggerShake(8f, 0.3f)
+            }
+        }
+    }
 }
 
-class LightningBolt(
-    val x1: Float, val y1: Float,
-    val x2: Float, val y2: Float,
-    var lifetime: Float = 0.15f
-)
+// ============ 环绕飞刀（万剑归宗超武） ============
+class OrbitingKnife(
+    var angle: Float,
+    var radius: Float,
+    var damage: Float
+) {
+    var x = 0f
+    var y = 0f
+    private var hitCooldown = 0f
+
+    fun update(player: Player, world: GameWorld, dt: Float) {
+        angle += 2.5f * dt  // 旋转速度
+        x = player.x + cos(angle) * radius
+        y = player.y + sin(angle) * radius
+        if (hitCooldown > 0) hitCooldown -= dt
+        // 碰撞检测
+        if (hitCooldown <= 0) {
+            for (e in world.enemies) {
+                if (!e.alive) continue
+                if (hypot(e.x - x, e.y - y) < e.radius + 18f) {
+                    val killed = e.takeDamage(damage)
+                    world.addFloatingText(e.x, e.y - 10, damage.toInt().toString(), 0xFFE0E0E0.toInt(), size = 18f)
+                    if (killed) world.onEnemyKilled(e)
+                    hitCooldown = 0.3f
+                    break
+                }
+            }
+        }
+    }
+}
+
+// ============ 陨石打击（陨石雨超武） ============
+class MeteorStrike(
+    var targetX: Float,
+    var targetY: Float,
+    var damage: Float,
+    var radius: Float
+) {
+    var progress = 0f  // 0→1，落下进度
+    val fallDuration = 0.6f
+    var exploded = false
+
+    fun update(world: GameWorld, dt: Float) {
+        progress += dt / fallDuration
+        if (progress >= 1f && !exploded) {
+            exploded = true
+            // 落地大爆炸
+            world.triggerExplosion(targetX, targetY, radius, 0xFFFF6D00.toInt(), 45)
+            world.triggerShake(12f, 0.25f)
+            for (e in world.enemies) {
+                if (!e.alive) continue
+                if (hypot(e.x - targetX, e.y - targetY) < radius + e.radius) {
+                    val killed = e.takeDamage(damage)
+                    if (killed) world.onEnemyKilled(e)
+                }
+            }
+        }
+    }
+
+    val alive get() = progress < 1.2f  // 爆炸后保留0.2秒用于渲染余波
+}

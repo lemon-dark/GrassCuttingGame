@@ -255,6 +255,13 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                 return
             }
 
+            // 屏幕震动（在世界坐标渲染之前偏移整个画布）
+            if (world.shakeDuration > 0) {
+                val dx = (Math.random().toFloat() - 0.5f) * world.shakeAmount
+                val dy = (Math.random().toFloat() - 0.5f) * world.shakeAmount
+                canvas.translate(dx, dy)
+            }
+
             // 世界坐标渲染
             canvas.save()
             canvas.translate(-cameraX, -cameraY)
@@ -266,21 +273,37 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             drawPlayer(canvas)
             drawBullets(canvas)
             drawLightning(canvas)
+            drawExplosions(canvas)
+            drawOrbitingKnives(canvas)
+            drawMeteors(canvas)
             drawParticles(canvas)
             drawFloatingTexts(canvas)
 
             canvas.restore()
 
-            // UI 渲染（屏幕坐标）
+            // UI 渲染（屏幕坐标，不受震动影响）
             drawHUD(canvas)
-            // 受伤红屏闪烁
+            // 受伤红屏闪烁（边缘渐变）
             if (world.hurtFlashTimer > 0) {
-                val alpha = (world.hurtFlashTimer / 0.3f * 100).toInt().coerceIn(0, 100)
-                paint.color = 0xFFD32F2F.toInt()
-                paint.alpha = alpha
+                val alpha = (world.hurtFlashTimer / 0.3f * 120).toInt().coerceIn(0, 120)
+                paint.shader = android.graphics.RadialGradient(
+                    canvasWidth / 2f, canvasHeight / 2f, canvasWidth * 0.6f,
+                    intArrayOf(0x00FF0000, (alpha shl 24) or 0xFF0000),
+                    floatArrayOf(0f, 1f),
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                canvas.drawRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat(), paint)
+                paint.shader = null
+            }
+            // 全屏闪光
+            if (world.flashDuration > 0 && world.flashAlpha > 0) {
+                paint.color = world.flashColor
+                paint.alpha = world.flashAlpha
                 canvas.drawRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat(), paint)
                 paint.alpha = 255
             }
+            // 超武进化提示
+            drawEvolutionNotice(canvas)
             drawJoystick(canvas)
 
             if (world.state == GameState.PAUSED) {
@@ -346,18 +369,69 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         }
     }
 
-    // ============ 光环 ============
+    // ============ 光环 + 拾取范围 ============
     private fun drawAura(canvas: Canvas) {
-        if (!world.auraActive) return
-        paint.color = 0xFFFFAB40.toInt()
+        // 拾取范围圈（半透明青色虚线）
+        val pickupRange = world.player.effectivePickupRange
+        paint.color = 0xFF00E5FF.toInt()
         paint.alpha = 25
-        canvas.drawCircle(world.player.x, world.player.y, world.auraRadius, paint)
-        paint.alpha = 60
+        canvas.drawCircle(world.player.x, world.player.y, pickupRange, paint)
+        paint.alpha = 50
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 3f
-        canvas.drawCircle(world.player.x, world.player.y, world.auraRadius, paint)
+        paint.strokeWidth = 2f
+        paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(15f, 10f), 0f)
+        canvas.drawCircle(world.player.x, world.player.y, pickupRange, paint)
+        paint.pathEffect = null
         paint.style = Paint.Style.FILL
         paint.alpha = 255
+
+        // 灼烧光环
+        if (!world.auraActive) return
+        val px = world.player.x
+        val py = world.player.y
+        val r = world.auraRadius
+
+        if (world.auraEvolved) {
+            // 超武：太阳风暴——3层旋转环+脉动
+            val pulse = 1f + Math.sin(System.currentTimeMillis() * 0.003).toFloat() * 0.04f
+            val rot1 = (System.currentTimeMillis() * 0.05f) % 360
+            val rot2 = (System.currentTimeMillis() * -0.03f) % 360
+            val rot3 = (System.currentTimeMillis() * 0.02f) % 360
+
+            // 底层填充
+            paint.color = 0xFFFF6D00.toInt()
+            paint.alpha = 20
+            canvas.drawCircle(px, py, r * pulse, paint)
+
+            // 3层旋转虚线环
+            val layers = arrayOf(
+                Triple(r * 0.7f, 0xFF00E5FF.toInt(), rot1),
+                Triple(r * 1.0f, 0xFFFF6D00.toInt(), rot2),
+                Triple(r * 1.3f, 0xFFFFEB3B.toInt(), rot3)
+            )
+            paint.style = Paint.Style.STROKE
+            for ((radius, color, rot) in layers) {
+                paint.color = color
+                paint.alpha = 100
+                paint.strokeWidth = 4f
+                paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(30f, 15f), rot)
+                canvas.drawCircle(px, py, radius * pulse, paint)
+            }
+            paint.pathEffect = null
+            paint.style = Paint.Style.FILL
+            paint.alpha = 255
+        } else {
+            // 普通光环
+            paint.color = 0xFFFFAB40.toInt()
+            paint.alpha = 25
+            canvas.drawCircle(px, py, r, paint)
+            paint.alpha = 60
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f
+            canvas.drawCircle(px, py, r, paint)
+            paint.style = Paint.Style.FILL
+            paint.alpha = 255
+        }
     }
 
     // ============ 敌人 ============
@@ -465,49 +539,163 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
     // ============ 闪电 ============
     private fun drawLightning(canvas: Canvas) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.strokeJoin = Paint.Join.ROUND
         for (bolt in world.lightningBolts) {
-            val points = mutableListOf<Pair<Float, Float>>()
-            points.add(bolt.x1 to bolt.y1)
-            val segments = 6
-            for (i in 1..segments) {
-                val t = i / segments.toFloat()
-                val nx = bolt.x1 + (bolt.x2 - bolt.x1) * t + (Math.random().toFloat() - 0.5f) * 25
-                val ny = bolt.y1 + (bolt.y2 - bolt.y1) * t + (Math.random().toFloat() - 0.5f) * 25
-                points.add(nx to ny)
-            }
-            // 外发光（粗、半透明）
+            val pts = bolt.points
+            if (pts.size < 2) continue
+            // 外发光（粗、半透明紫色）
             paint.color = 0xFFB388FF.toInt()
-            paint.strokeWidth = 10f
-            paint.alpha = 80
-            for (i in 0 until points.size - 1) {
-                canvas.drawLine(points[i].first, points[i].second, points[i+1].first, points[i+1].second, paint)
+            paint.strokeWidth = bolt.width * 3f
+            paint.alpha = 60
+            for (i in 0 until pts.size - 1) {
+                canvas.drawLine(pts[i].first, pts[i].second, pts[i+1].first, pts[i+1].second, paint)
             }
-            // 中层
-            paint.color = 0xFFFFEB3B.toInt()
-            paint.strokeWidth = 5f
+            // 中层（黄色）
+            paint.color = bolt.color
+            paint.strokeWidth = bolt.width * 1.5f
             paint.alpha = 180
-            for (i in 0 until points.size - 1) {
-                canvas.drawLine(points[i].first, points[i].second, points[i+1].first, points[i+1].second, paint)
+            for (i in 0 until pts.size - 1) {
+                canvas.drawLine(pts[i].first, pts[i].second, pts[i+1].first, pts[i+1].second, paint)
             }
             // 内芯（亮白）
             paint.color = 0xFFFFFFFF.toInt()
-            paint.strokeWidth = 2f
+            paint.strokeWidth = bolt.width * 0.6f
             paint.alpha = 255
-            for (i in 0 until points.size - 1) {
-                canvas.drawLine(points[i].first, points[i].second, points[i+1].first, points[i+1].second, paint)
+            for (i in 0 until pts.size - 1) {
+                canvas.drawLine(pts[i].first, pts[i].second, pts[i+1].first, pts[i+1].second, paint)
             }
         }
         paint.alpha = 255
         paint.strokeWidth = 1f
+        paint.style = Paint.Style.FILL
+    }
+
+    // ============ 爆炸冲击波 ============
+    private fun drawExplosions(canvas: Canvas) {
+        paint.style = Paint.Style.STROKE
+        for (exp in world.explosions) {
+            // 外发光环
+            paint.color = exp.color
+            paint.strokeWidth = exp.lineWidth * 2
+            paint.alpha = (exp.alpha * 0.4f).toInt().coerceIn(0, 255)
+            canvas.drawCircle(exp.x, exp.y, exp.radius * 1.1f, paint)
+            // 主环
+            paint.strokeWidth = exp.lineWidth
+            paint.alpha = exp.alpha
+            canvas.drawCircle(exp.x, exp.y, exp.radius, paint)
+            // 内圈
+            paint.strokeWidth = exp.lineWidth * 0.5f
+            paint.alpha = (exp.alpha * 0.7f).toInt().coerceIn(0, 255)
+            canvas.drawCircle(exp.x, exp.y, exp.radius * 0.7f, paint)
+        }
+        paint.alpha = 255
+        paint.style = Paint.Style.FILL
+    }
+
+    // ============ 环绕飞刀（万剑归宗） ============
+    private fun drawOrbitingKnives(canvas: Canvas) {
+        for (knife in world.orbitingKnives) {
+            canvas.save()
+            canvas.translate(knife.x, knife.y)
+            canvas.rotate(Math.toDegrees(knife.angle.toDouble()).toFloat() + 90f)
+            // 飞刀发光
+            drawGlow(canvas, glowWhite, 0f, 0f, 50f, 120)
+            // 飞刀形状（菱形）
+            paint.color = 0xFFE0E0E0.toInt()
+            val path = android.graphics.Path()
+            path.moveTo(0f, -18f)
+            path.lineTo(6f, 0f)
+            path.lineTo(0f, 18f)
+            path.lineTo(-6f, 0f)
+            path.close()
+            canvas.drawPath(path, paint)
+            // 刀刃高光
+            paint.color = 0xFFFFFFFF.toInt()
+            canvas.drawLine(0f, -14f, 0f, 10f, paint)
+            canvas.restore()
+        }
+    }
+
+    // ============ 陨石（陨石雨） ============
+    private fun drawMeteors(canvas: Canvas) {
+        for (m in world.meteorStrikes) {
+            if (m.progress < 1f) {
+                // 落下中的陨石：从屏幕上方插值到目标
+                val startY = m.targetY - 800f
+                val curY = startY + (m.targetY - startY) * m.progress
+                val curX = m.targetX
+                // 尾焰
+                for (i in 0..5) {
+                    val trailY = curY - i * 25f
+                    val trailAlpha = (150 - i * 25).coerceAtLeast(0)
+                    drawGlow(canvas, glowOrange, curX, trailY, 40f - i * 5f, trailAlpha)
+                }
+                // 陨石本体
+                drawGlow(canvas, glowOrange, curX, curY, 60f, 200)
+                paint.color = 0xFF8D6E63.toInt()
+                canvas.drawCircle(curX, curY, 18f, paint)
+                paint.color = 0xFFFF5722.toInt()
+                canvas.drawCircle(curX, curY, 12f, paint)
+                // 目标预警圈
+                paint.color = 0xFFFF5722.toInt()
+                paint.alpha = (100 + Math.sin(m.progress * Math.PI * 4).toFloat() * 50).toInt().coerceIn(50, 150)
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f
+                canvas.drawCircle(m.targetX, m.targetY, m.radius * 0.3f, paint)
+                paint.style = Paint.Style.FILL
+                paint.alpha = 255
+            }
+        }
+    }
+
+    // ============ 超武进化提示 ============
+    private fun drawEvolutionNotice(canvas: Canvas) {
+        val notice = world.evolutionNotice ?: return
+        val elapsed = System.currentTimeMillis() - notice.second
+        if (elapsed > 3000) {
+            world.evolutionNotice = null
+            return
+        }
+        // 淡入淡出
+        val alpha = when {
+            elapsed < 300 -> (elapsed / 300f * 255).toInt()
+            elapsed > 2700 -> ((3000 - elapsed) / 300f * 255).toInt()
+            else -> 255
+        }.coerceIn(0, 255)
+
+        val cy = canvasHeight * 0.35f
+        // 背景光效
+        drawGlow(canvas, glowBlue, canvasWidth / 2f, cy, 200f, (alpha * 0.5f).toInt())
+        // 标题
+        paint.color = 0xFF00E5FF.toInt()
+        paint.alpha = alpha
+        paint.textSize = canvasWidth * 0.06f
+        paint.textAlign = Paint.Align.CENTER
+        paint.typeface = android.graphics.Typeface.DEFAULT_BOLD
+        canvas.drawText("超武觉醒！", canvasWidth / 2f, cy - 30f, paint)
+        // 超武名称
+        paint.color = 0xFFFFFFFF.toInt()
+        paint.textSize = canvasWidth * 0.08f
+        canvas.drawText(notice.first, canvasWidth / 2f, cy + 40f, paint)
+        // 副标题
+        paint.color = 0xFFB0BEC5.toInt()
+        paint.textSize = canvasWidth * 0.035f
+        paint.typeface = android.graphics.Typeface.DEFAULT
+        canvas.drawText("技能已进化为终极形态", canvasWidth / 2f, cy + 80f, paint)
+        paint.alpha = 255
+        paint.textAlign = Paint.Align.LEFT
     }
 
     // ============ 粒子 ============
     private fun drawParticles(canvas: Canvas) {
         if (!Settings.particlesEnabled) return
         for (p in world.particles) {
-            val alpha = (p.lifetime / 0.4f * 220).toInt().coerceIn(0, 220)
-            val bmp = pickGlowForColor(p.color)
-            drawGlow(canvas, bmp, p.x, p.y, p.size * 3.6f, alpha)
+            if (!p.alive) continue
+            val alpha = ((1f - p.age / p.lifetime) * 220).toInt().coerceIn(0, 220)
+            val bmp = pickGlowForColor(p.currentColor)
+            drawGlow(canvas, bmp, p.x, p.y, p.currentSize * 3.6f, alpha)
         }
         paint.alpha = 255
     }
