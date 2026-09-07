@@ -69,6 +69,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private var enemyEliteBmp: Bitmap? = null
     private var enemyBossBmp: Bitmap? = null
 
+    // 物品和子弹贴图
+    private var xpGemBmp: Bitmap? = null
+    private var bulletEnergyBmp: Bitmap? = null
+    private var bulletKnifeBmp: Bitmap? = null
+    private var bulletFireballBmp: Bitmap? = null
+
     // 设置界面状态
     private var inSettings = false
     private val settingItems = listOf(
@@ -99,6 +105,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             enemyTankBmp = BitmapFactory.decodeStream(context.assets.open("enemy_tank.png"))
             enemyEliteBmp = BitmapFactory.decodeStream(context.assets.open("enemy_elite.png"))
             enemyBossBmp = BitmapFactory.decodeStream(context.assets.open("enemy_boss.png"))
+            // 物品和子弹贴图
+            xpGemBmp = BitmapFactory.decodeStream(context.assets.open("xp_gem.png"))
+            bulletEnergyBmp = BitmapFactory.decodeStream(context.assets.open("bullet_energy.png"))
+            bulletKnifeBmp = BitmapFactory.decodeStream(context.assets.open("bullet_knife.png"))
+            bulletFireballBmp = BitmapFactory.decodeStream(context.assets.open("bullet_fireball.png"))
         } catch (e: Exception) {
             // 贴图加载失败，回退几何图形
         }
@@ -306,17 +317,22 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     // ============ 经验宝石 ============
     private fun drawXpGems(canvas: Canvas) {
         for (gem in world.xpGems) {
-            // 金色发光贴图
-            drawGlow(canvas, glowGold, gem.x, gem.y, gem.radius * 2.5f, 140)
-            paint.color = GameConfig.COLOR_XP
-            paint.alpha = 255
-            canvas.drawCircle(gem.x, gem.y, gem.radius, paint)
-            // 高光
-            paint.color = Color.WHITE
-            paint.alpha = 180
-            canvas.drawCircle(gem.x - gem.radius * 0.3f, gem.y - gem.radius * 0.3f, gem.radius * 0.3f, paint)
+            // 外层发光
+            drawGlow(canvas, glowGold, gem.x, gem.y, gem.radius * 2.8f, 120)
+            // 宝石贴图
+            if (xpGemBmp != null) {
+                val size = gem.radius * 2.5f
+                val ratio = xpGemBmp!!.height.toFloat() / xpGemBmp!!.width.toFloat()
+                val w = size
+                val h = size * ratio
+                val src = Rect(0, 0, xpGemBmp!!.width, xpGemBmp!!.height)
+                val dst = RectF(gem.x - w / 2, gem.y - h / 2, gem.x + w / 2, gem.y + h / 2)
+                canvas.drawBitmap(xpGemBmp!!, src, dst, paint)
+            } else {
+                paint.color = GameConfig.COLOR_XP
+                canvas.drawCircle(gem.x, gem.y, gem.radius, paint)
+            }
         }
-        paint.alpha = 255
     }
 
     // ============ 光环 ============
@@ -389,25 +405,48 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             }
 
             if (b.bulletType == "knife") {
-                // 飞刀：拉长的矩形 + 发光
-                drawGlow(canvas, glowBmp, b.x, b.y, b.size * 1.8f, 120)
+                // 飞刀：发光 + 旋转贴图
+                drawGlow(canvas, glowWhite, b.x, b.y, b.size * 1.8f, 100)
                 val angle = kotlin.math.atan2(b.vy, b.vx)
                 canvas.save()
                 canvas.rotate(Math.toDegrees(angle.toDouble()).toFloat(), b.x, b.y)
-                paint.color = b.color
-                paint.alpha = 255
-                canvas.drawRect(b.x - b.size * 1.5f, b.y - b.size * 0.4f, b.x + b.size * 1.5f, b.y + b.size * 0.4f, paint)
+                if (bulletKnifeBmp != null) {
+                    val kw = b.size * 3.5f
+                    val kh = kw * bulletKnifeBmp!!.height / bulletKnifeBmp!!.width
+                    val src = Rect(0, 0, bulletKnifeBmp!!.width, bulletKnifeBmp!!.height)
+                    val dst = RectF(b.x - kw / 2, b.y - kh / 2, b.x + kw / 2, b.y + kh / 2)
+                    canvas.drawBitmap(bulletKnifeBmp!!, src, dst, paint)
+                } else {
+                    paint.color = b.color
+                    canvas.drawRect(b.x - b.size * 1.5f, b.y - b.size * 0.4f, b.x + b.size * 1.5f, b.y + b.size * 0.4f, paint)
+                }
                 canvas.restore()
             } else if (b.bulletType == "fireball") {
-                // 火球：大发光 + 亮内核
-                drawGlow(canvas, glowOrange, b.x, b.y, b.size * 2.5f, 160)
-                drawGlow(canvas, glowGold, b.x, b.y, b.size * 0.8f, 255)
+                // 火球：大发光 + 贴图
+                drawGlow(canvas, glowOrange, b.x, b.y, b.size * 2.5f, 140)
+                if (bulletFireballBmp != null) {
+                    val fw = b.size * 3f
+                    val fh = fw * bulletFireballBmp!!.height / bulletFireballBmp!!.width
+                    val src = Rect(0, 0, bulletFireballBmp!!.width, bulletFireballBmp!!.height)
+                    val dst = RectF(b.x - fw / 2, b.y - fh / 2, b.x + fw / 2, b.y + fh / 2)
+                    canvas.drawBitmap(bulletFireballBmp!!, src, dst, paint)
+                } else {
+                    drawGlow(canvas, glowGold, b.x, b.y, b.size * 0.8f, 255)
+                }
             } else {
-                // 普通子弹：发光贴图
-                drawGlow(canvas, glowBmp, b.x, b.y, b.size * 2f, 200)
-                paint.color = Color.WHITE
-                paint.alpha = 255
-                canvas.drawCircle(b.x, b.y, b.size * 0.4f, paint)
+                // 普通子弹：发光 + 贴图
+                drawGlow(canvas, glowBlue, b.x, b.y, b.size * 2f, 160)
+                if (bulletEnergyBmp != null) {
+                    val ew = b.size * 2.8f
+                    val eh = ew * bulletEnergyBmp!!.height / bulletEnergyBmp!!.width
+                    val src = Rect(0, 0, bulletEnergyBmp!!.width, bulletEnergyBmp!!.height)
+                    val dst = RectF(b.x - ew / 2, b.y - eh / 2, b.x + ew / 2, b.y + eh / 2)
+                    canvas.drawBitmap(bulletEnergyBmp!!, src, dst, paint)
+                } else {
+                    paint.color = Color.WHITE
+                    paint.alpha = 255
+                    canvas.drawCircle(b.x, b.y, b.size * 0.4f, paint)
+                }
             }
         }
         paint.alpha = 255
