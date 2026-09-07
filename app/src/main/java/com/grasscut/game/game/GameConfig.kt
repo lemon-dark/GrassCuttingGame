@@ -5,7 +5,7 @@ import android.graphics.Color
 object GameConfig {
     const val MAP_WIDTH = 3000f
     const val MAP_HEIGHT = 3000f
-    const val GAME_DURATION = 900f // 15分钟
+    const val GAME_DURATION = 600f // 10分钟
 
     // 玩家初始属性
     const val PLAYER_MAX_HP = 120f

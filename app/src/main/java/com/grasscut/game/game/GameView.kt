@@ -696,7 +696,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         textPaint.textSize = h * 0.02f
         canvas.drawText("发育型 Roguelike 割草游戏", w / 2f, h * 0.4f, textPaint)
         canvas.drawText("虚拟摇杆移动，自动攻击，升级选技能", w / 2f, h * 0.44f, textPaint)
-        canvas.drawText("坚持 15 分钟击败最终 Boss 即可胜利", w / 2f, h * 0.48f, textPaint)
+        canvas.drawText("坚持 10 分钟击败最终 Boss 即可胜利", w / 2f, h * 0.48f, textPaint)
 
         // 开始按钮
         val btnW = w * 0.6f

@@ -369,8 +369,8 @@ class GameWorld {
             for (i in 0..4) spawnEnemyAtEdge(EnemyType.ELITE)
         }
 
-        // Boss（5分钟）
-        if (!bossSpawned && gameTime >= 300f) {
+        // Boss（4分钟）
+        if (!bossSpawned && gameTime >= 240f) {
             bossSpawned = true
             playSound("warning")
             spawnEnemyAtEdge(EnemyType.BOSS)
