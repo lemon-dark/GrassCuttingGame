@@ -12,6 +12,7 @@ object Settings {
     // 设置项 key
     private const val KEY_SOUND_ENABLED = "sound_enabled"
     private const val KEY_SOUND_VOLUME = "sound_volume"
+    private const val KEY_PICKUP_VOLUME = "pickup_volume"
     private const val KEY_PARTICLES_ENABLED = "particles_enabled"
     private const val KEY_DAMAGE_NUMBERS = "damage_numbers"
     private const val KEY_SCREEN_SHAKE = "screen_shake"
@@ -21,6 +22,8 @@ object Settings {
     var soundEnabled: Boolean = true
         private set
     var soundVolume: Float = 0.6f
+        private set
+    var pickupVolume: Float = 0.3f
         private set
     var particlesEnabled: Boolean = true
         private set
@@ -37,6 +40,7 @@ object Settings {
         prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
         soundEnabled = prefs.getBoolean(KEY_SOUND_ENABLED, true)
         soundVolume = prefs.getFloat(KEY_SOUND_VOLUME, 0.6f)
+        pickupVolume = prefs.getFloat(KEY_PICKUP_VOLUME, 0.3f)
         particlesEnabled = prefs.getBoolean(KEY_PARTICLES_ENABLED, true)
         damageNumbers = prefs.getBoolean(KEY_DAMAGE_NUMBERS, true)
         screenShake = prefs.getBoolean(KEY_SCREEN_SHAKE, true)
@@ -45,6 +49,7 @@ object Settings {
 
     fun setSoundEnabled(v: Boolean) { soundEnabled = v; prefs.edit().putBoolean(KEY_SOUND_ENABLED, v).apply() }
     fun setSoundVolume(v: Float) { soundVolume = v; prefs.edit().putFloat(KEY_SOUND_VOLUME, v).apply() }
+    fun setPickupVolume(v: Float) { pickupVolume = v; prefs.edit().putFloat(KEY_PICKUP_VOLUME, v).apply() }
     fun setParticlesEnabled(v: Boolean) { particlesEnabled = v; prefs.edit().putBoolean(KEY_PARTICLES_ENABLED, v).apply() }
     fun setDamageNumbers(v: Boolean) { damageNumbers = v; prefs.edit().putBoolean(KEY_DAMAGE_NUMBERS, v).apply() }
     fun setScreenShake(v: Boolean) { screenShake = v; prefs.edit().putBoolean(KEY_SCREEN_SHAKE, v).apply() }

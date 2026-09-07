@@ -187,19 +187,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun playSound(name: String) {
         if (!soundReady || !Settings.soundEnabled) return
         soundIds[name]?.let { id ->
-            // 不同音效不同音量倍率，避免拾取等高频音效太吵
-            val volMultiplier = when (name) {
-                "pickup" -> 0.25f
-                "shoot" -> 0.6f
-                "hit" -> 0.5f
-                "hurt" -> 0.7f
-                "levelup" -> 0.8f
-                "death" -> 0.9f
-                "victory" -> 0.9f
-                "warning" -> 0.8f
-                else -> 0.7f
-            }
-            val vol = Settings.soundVolume * volMultiplier
+            // 拾取音效使用独立音量设置，其他音效使用主音量
+            val vol = if (name == "pickup") Settings.pickupVolume else Settings.soundVolume
             soundPool.play(id, vol, vol, 1, 0, 1f)
         }
     }
@@ -798,6 +787,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             Settings.soundVolume < 0.85f -> "中"
             else -> "高"
         }
+        val pickupText = when {
+            Settings.pickupVolume <= 0.01f -> "关"
+            Settings.pickupVolume < 0.2f -> "低"
+            Settings.pickupVolume < 0.4f -> "中"
+            else -> "高"
+        }
         val joyText = when {
             Settings.joystickSize < 0.9f -> "小"
             Settings.joystickSize < 1.15f -> "中"
@@ -805,7 +800,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         }
         val items = listOf(
             Triple("音效", if (Settings.soundEnabled) "开" else "关", "sound"),
-            Triple("音量", volText, "volume"),
+            Triple("主音量", volText, "volume"),
+            Triple("拾取音量", pickupText, "pickup"),
             Triple("粒子特效", if (Settings.particlesEnabled) "开" else "关", "particles"),
             Triple("伤害数字", if (Settings.damageNumbers) "开" else "关", "damage"),
             Triple("屏幕震动", if (Settings.screenShake) "开" else "关", "shake"),
@@ -852,7 +848,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         val startY = h * 0.15f
         val rowW = w * 0.9f
         val rowX = w * 0.05f
-        val keys = listOf("sound", "volume", "particles", "damage", "shake", "joystick")
+        val keys = listOf("sound", "volume", "pickup", "particles", "damage", "shake", "joystick")
 
         for ((i, key) in keys.withIndex()) {
             val ry = startY + i * rowH
@@ -866,7 +862,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                             else -> 0.3f
                         }
                         Settings.setSoundVolume(next)
-                        if (Settings.soundEnabled) playSound("pickup")
+                        if (Settings.soundEnabled) playSound("shoot")
+                    }
+                    "pickup" -> {
+                        val next = when {
+                            Settings.pickupVolume <= 0.01f -> 0.15f
+                            Settings.pickupVolume < 0.2f -> 0.3f
+                            Settings.pickupVolume < 0.4f -> 0.5f
+                            else -> 0f
+                        }
+                        Settings.setPickupVolume(next)
+                        if (Settings.soundEnabled && next > 0) playSound("pickup")
                     }
                     "particles" -> Settings.setParticlesEnabled(!Settings.particlesEnabled)
                     "damage" -> Settings.setDamageNumbers(!Settings.damageNumbers)
