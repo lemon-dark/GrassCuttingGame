@@ -89,6 +89,9 @@ class Enemy(x: Float, y: Float, val type: EnemyType, gameTime: Float) : Entity(x
     var xpValue: Int
     var hitFlash = 0f
     var attackCooldown = 0f
+    // 减速效果（冰锥术）
+    var slowTimer = 0f
+    var slowFactor = 1f  // 1=正常，0.5=减速50%
 
     // 帧动画
     var animFrame = 0
@@ -144,6 +147,10 @@ class Bullet(
     var explosionRadius = 0f // 火球爆炸范围
     val trail = ArrayDeque<Pair<Float, Float>>() // 拖尾位置
     var trailTimer = 0f
+    var homing = false  // 追踪导弹标志
+    var homingStrength = 3f  // 追踪转向强度
+    var slowFactor = 1f  // 冰锥减速比例
+    var slowDuration = 0f  // 冰锥减速持续时间
 }
 
 // ============ 经验宝石 ============
@@ -228,6 +235,17 @@ class Explosion(
     val alpha get() = (255 * (1 - age / lifetime)).toInt().coerceIn(0, 255)
     val lineWidth get() = 8f * (1 - age / lifetime) + 1f
     fun update(dt: Float) { age += dt }
+}
+
+// ============ 旋风斩风刃 ============
+class WhirlwindBlade(
+    var x: Float, var y: Float,
+    var angle: Float,
+    var radius: Float,
+    var damage: Float,
+    var powerful: Boolean = false
+) {
+    var hitCooldown = 0f
 }
 
 // ============ 闪电特效 ============

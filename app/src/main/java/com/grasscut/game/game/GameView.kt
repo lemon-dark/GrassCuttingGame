@@ -74,6 +74,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private var bulletEnergyBmp: Bitmap? = null
     private var bulletKnifeBmp: Bitmap? = null
     private var bulletFireballBmp: Bitmap? = null
+    private var backgroundBmp: Bitmap? = null
 
     // 设置界面状态
     private var inSettings = false
@@ -110,6 +111,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             bulletEnergyBmp = BitmapFactory.decodeStream(context.assets.open("bullet_energy.png"))
             bulletKnifeBmp = BitmapFactory.decodeStream(context.assets.open("bullet_knife.png"))
             bulletFireballBmp = BitmapFactory.decodeStream(context.assets.open("bullet_fireball.png"))
+            // 背景贴图
+            backgroundBmp = BitmapFactory.decodeStream(context.assets.open("background_tile.png"))
         } catch (e: Exception) {
             // 贴图加载失败，回退几何图形
         }
@@ -165,7 +168,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
             .build()
         soundPool = SoundPool.Builder()
-            .setMaxStreams(8)
+            .setMaxStreams(12)
             .setAudioAttributes(attrs)
             .build()
         soundPool.setOnLoadCompleteListener { _, _, _ -> soundReady = true }
@@ -177,7 +180,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             "pickup" to R.raw.pickup,
             "death" to R.raw.death,
             "victory" to R.raw.victory,
-            "warning" to R.raw.warning
+            "warning" to R.raw.warning,
+            // 战斗语音
+            "voice_attack" to R.raw.voice_attack,
+            "voice_kill" to R.raw.voice_kill,
+            "voice_levelup" to R.raw.voice_levelup,
+            "voice_hurt" to R.raw.voice_hurt,
+            "voice_ultimate" to R.raw.voice_ultimate,
+            "voice_lowhp" to R.raw.voice_lowhp
         )
         for ((name, resId) in sounds) {
             soundIds[name] = soundPool.load(context, resId, 1)
@@ -190,6 +200,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             // 拾取音效使用独立音量设置，其他音效使用主音量
             val vol = if (name == "pickup") Settings.pickupVolume else Settings.soundVolume
             soundPool.play(id, vol, vol, 1, 0, 1f)
+        }
+    }
+
+    private fun playVoice(name: String) {
+        if (!soundReady || !Settings.soundEnabled) return
+        soundIds[name]?.let { id ->
+            // 语音使用主音量的80%，避免盖过音效
+            val vol = Settings.soundVolume * 0.8f
+            soundPool.play(id, vol, vol, 2, 0, 1f)  // 优先级2，高于普通音效
         }
     }
 
@@ -225,6 +244,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                 val events = ArrayList(world.soundEvents)
                 world.soundEvents.clear()
                 for (e in events) playSound(e)
+            }
+            // 消费语音事件
+            if (world.voiceEvents.isNotEmpty()) {
+                val voices = ArrayList(world.voiceEvents)
+                world.voiceEvents.clear()
+                for (v in voices) playVoice(v)
             }
             updateCamera()
             render()
@@ -276,6 +301,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             drawExplosions(canvas)
             drawOrbitingKnives(canvas)
             drawMeteors(canvas)
+            drawWhirlwind(canvas)
             drawParticles(canvas)
             drawFloatingTexts(canvas)
 
@@ -322,22 +348,38 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
     // ============ 地图 ============
     private fun drawMap(canvas: Canvas) {
-        val tileSize = 100f
+        val tileSize = 400f  // 每块背景图在世界坐标中的大小
         val startX = (cameraX / tileSize).toInt() * tileSize
         val startY = (cameraY / tileSize).toInt() * tileSize
         val endX = cameraX + canvasWidth + tileSize
         val endY = cameraY + canvasHeight + tileSize
 
-        var x = startX
-        while (x < endX) {
-            var y = startY
-            while (y < endY) {
-                val checker = ((x / tileSize).toInt() + (y / tileSize).toInt()) % 2 == 0
-                paint.color = if (checker) GameConfig.COLOR_GRASS else GameConfig.COLOR_GRASS_DARK
-                canvas.drawRect(x, y, x + tileSize, y + tileSize, paint)
-                y += tileSize
+        if (backgroundBmp != null) {
+            // 用背景图平铺
+            val src = Rect(0, 0, backgroundBmp!!.width, backgroundBmp!!.height)
+            var x = startX
+            while (x < endX) {
+                var y = startY
+                while (y < endY) {
+                    val dst = RectF(x, y, x + tileSize, y + tileSize)
+                    canvas.drawBitmap(backgroundBmp!!, src, dst, null)
+                    y += tileSize
+                }
+                x += tileSize
             }
-            x += tileSize
+        } else {
+            // 回退：棋盘格
+            var x = startX
+            while (x < endX) {
+                var y = startY
+                while (y < endY) {
+                    val checker = ((x / tileSize).toInt() + (y / tileSize).toInt()) % 2 == 0
+                    paint.color = if (checker) GameConfig.COLOR_GRASS else GameConfig.COLOR_GRASS_DARK
+                    canvas.drawRect(x, y, x + tileSize, y + tileSize, paint)
+                    y += tileSize
+                }
+                x += tileSize
+            }
         }
 
         // 地图边界
@@ -371,15 +413,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
     // ============ 光环 + 拾取范围 ============
     private fun drawAura(canvas: Canvas) {
-        // 拾取范围圈（半透明青色虚线）
+        // 拾取范围圈（极淡，仅作 subtle 提示）
         val pickupRange = world.player.effectivePickupRange
         paint.color = 0xFF00E5FF.toInt()
-        paint.alpha = 25
+        paint.alpha = 10
         canvas.drawCircle(world.player.x, world.player.y, pickupRange, paint)
-        paint.alpha = 50
+        paint.alpha = 18
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 2f
-        paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(15f, 10f), 0f)
+        paint.strokeWidth = 1.5f
+        paint.pathEffect = android.graphics.DashPathEffect(floatArrayOf(12f, 12f), 0f)
         canvas.drawCircle(world.player.x, world.player.y, pickupRange, paint)
         paint.pathEffect = null
         paint.style = Paint.Style.FILL
@@ -461,6 +503,18 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                 paint.alpha = 255
                 canvas.drawRect(barX, barY, barX + barW * (e.hp / e.maxHp), barY + barH, paint)
             }
+
+            // 冰冻效果
+            if (e.slowTimer > 0) {
+                drawGlow(canvas, glowBlue, e.x, e.y, e.radius * 1.3f, 80)
+                paint.color = 0xFF81D4FA.toInt()
+                paint.alpha = 100
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f
+                canvas.drawCircle(e.x, e.y, e.radius * 1.1f, paint)
+                paint.style = Paint.Style.FILL
+                paint.alpha = 255
+            }
         }
     }
 
@@ -518,6 +572,39 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                 } else {
                     drawGlow(canvas, glowGold, b.x, b.y, b.size * 0.8f, 255)
                 }
+            } else if (b.bulletType == "missile") {
+                // 追踪导弹：尾焰 + 弹体
+                val angle = kotlin.math.atan2(b.vy, b.vx)
+                canvas.save()
+                canvas.translate(b.x, b.y)
+                canvas.rotate(Math.toDegrees(angle.toDouble()).toFloat())
+                // 尾焰
+                drawGlow(canvas, glowOrange, -b.size * 1.5f, 0f, b.size * 1.5f, 150)
+                drawGlow(canvas, glowGold, -b.size * 0.8f, 0f, b.size * 0.8f, 200)
+                // 弹体
+                paint.color = 0xFF424242.toInt()
+                canvas.drawRoundRect(RectF(-b.size, -b.size * 0.5f, b.size, b.size * 0.5f), 4f, 4f, paint)
+                paint.color = 0xFFFF6D00.toInt()
+                canvas.drawCircle(b.size * 0.6f, 0f, b.size * 0.35f, paint)
+                canvas.restore()
+            } else if (b.bulletType == "ice_spike") {
+                // 冰锥：蓝色发光 + 菱形冰锥
+                val angle = kotlin.math.atan2(b.vy, b.vx)
+                drawGlow(canvas, glowBlue, b.x, b.y, b.size * 2f, 120)
+                canvas.save()
+                canvas.translate(b.x, b.y)
+                canvas.rotate(Math.toDegrees(angle.toDouble()).toFloat())
+                paint.color = 0xFF81D4FA.toInt()
+                val path = android.graphics.Path()
+                path.moveTo(b.size * 1.5f, 0f)
+                path.lineTo(0f, b.size * 0.6f)
+                path.lineTo(-b.size * 0.8f, 0f)
+                path.lineTo(0f, -b.size * 0.6f)
+                path.close()
+                canvas.drawPath(path, paint)
+                paint.color = 0xFFE1F5FE.toInt()
+                canvas.drawLine(0f, 0f, b.size * 1.2f, 0f, paint)
+                canvas.restore()
             } else {
                 // 普通子弹：发光 + 贴图
                 drawGlow(canvas, glowBlue, b.x, b.y, b.size * 2f, 160)
@@ -686,6 +773,33 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         canvas.drawText("技能已进化为终极形态", canvasWidth / 2f, cy + 80f, paint)
         paint.alpha = 255
         paint.textAlign = Paint.Align.LEFT
+    }
+
+    // ============ 旋风斩风刃 ============
+    private fun drawWhirlwind(canvas: Canvas) {
+        for (blade in world.whirlwindBlades) {
+            canvas.save()
+            canvas.translate(blade.x, blade.y)
+            canvas.rotate(Math.toDegrees(blade.angle.toDouble()).toFloat() + 90f)
+            // 风刃发光
+            val color = if (blade.powerful) 0xFF00E5FF.toInt() else 0xFFB0BEC5.toInt()
+            drawGlow(canvas, if (blade.powerful) glowBlue else glowWhite, 0f, 0f, 45f, 100)
+            // 风刃形状（弯月形）
+            paint.color = color
+            paint.alpha = 200
+            val path = android.graphics.Path()
+            path.moveTo(0f, -25f)
+            path.quadTo(20f, 0f, 0f, 25f)
+            path.quadTo(-8f, 0f, 0f, -25f)
+            path.close()
+            canvas.drawPath(path, paint)
+            // 风刃高光
+            paint.color = 0xFFFFFFFF.toInt()
+            paint.alpha = 150
+            canvas.drawLine(0f, -18f, 0f, 18f, paint)
+            paint.alpha = 255
+            canvas.restore()
+        }
     }
 
     // ============ 粒子 ============

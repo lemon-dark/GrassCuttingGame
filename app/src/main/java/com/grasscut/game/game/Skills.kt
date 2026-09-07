@@ -363,6 +363,173 @@ class AuraSkill : Skill(
     }
 }
 
+// ============ 追踪导弹 ============
+class MissileSkill : Skill(
+    "追踪导弹", "发射自动追踪敌人的导弹，命中爆炸", 8, 1.8f
+) {
+    init { iconColor = 0xFFFF5722.toInt() }
+    override val evolutionName = "全屏导弹雨"
+
+    override fun upgradeDescription(): String = when {
+        level == 0 -> "获得追踪导弹：自动锁定敌人"
+        else -> "导弹数量+1，伤害+20%"
+    }
+
+    override fun update(player: Player, world: GameWorld, dt: Float) {
+        if (level == 0) return
+        cooldownTimer -= dt
+        tickSound(dt)
+        if (cooldownTimer <= 0) {
+            val count = if (evolved) 8 else level
+            val targets = findNearestEnemies(player, world, count, 900f)
+            if (targets.isNotEmpty()) {
+                playShootSound(world, 0.18f)
+                val dmg = player.effectiveAtk * (1.8f + level * 0.25f)
+                val expRadius = if (evolved) 120f else 80f
+                for (i in targets.indices) {
+                    val angle = (i.toFloat() / targets.size) * 6.28f + randomAngle()
+                    val speed = 350f
+                    val missile = Bullet(
+                        player.x + cos(angle) * 40, player.y + sin(angle) * 40,
+                        cos(angle) * speed, sin(angle) * speed,
+                        dmg, pierce = 0, lifetime = 4f,
+                        color = 0xFFFF6D00.toInt(), size = 14f,
+                        bulletType = "missile"
+                    )
+                    missile.homing = true
+                    missile.homingStrength = if (evolved) 5f else 3.5f
+                    missile.explosionRadius = expRadius
+                    world.bullets.add(missile)
+                }
+                cooldownTimer = if (evolved) cooldown * 0.7f else cooldown
+            } else {
+                cooldownTimer = 0.3f
+            }
+        }
+    }
+
+    private fun randomAngle(): Float = (Math.random() * 6.28).toFloat()
+}
+
+// ============ 冰锥术 ============
+class IceSpikeSkill : Skill(
+    "冰锥术", "发射冰锥，命中后减速敌人", 8, 1.5f
+) {
+    init { iconColor = 0xFF4FC3F7.toInt() }
+    override val evolutionName = "绝对零度"
+
+    override fun upgradeDescription(): String = when {
+        level == 0 -> "获得冰锥术：减速敌人50%"
+        else -> "冰锥数量+1，伤害+15%，减速效果增强"
+    }
+
+    override fun update(player: Player, world: GameWorld, dt: Float) {
+        if (level == 0) return
+        cooldownTimer -= dt
+        tickSound(dt)
+        if (cooldownTimer <= 0) {
+            if (evolved) {
+                // 超武：绝对零度——大范围冰冻光环+持续伤害
+                val range = 250f + level * 25f
+                val dmg = player.effectiveAtk * (1.2f + level * 0.2f)
+                for (e in world.enemies) {
+                    if (!e.alive) continue
+                    if (player.distTo(e) < range + e.radius) {
+                        val killed = e.takeDamage(dmg)
+                        e.slowTimer = 1.5f
+                        e.slowFactor = 0.2f  // 减速80%
+                        world.addFloatingText(e.x, e.y - 10, "冰冻!", 0xFF4FC3F7.toInt(), size = 20f)
+                        if (killed) world.onEnemyKilled(e)
+                    }
+                }
+                // 冰冻光环视觉
+                world.triggerExplosion(player.x, player.y, range, 0xFF4FC3F7.toInt(), 15, withFlash = false, withShake = false)
+                cooldownTimer = 1.2f
+            } else {
+                val targets = findNearestEnemies(player, world, level, 800f)
+                if (targets.isNotEmpty()) {
+                    playShootSound(world, 0.15f)
+                    val dmg = player.effectiveAtk * (1.2f + level * 0.2f)
+                    val slowFactor = (0.5f - level * 0.03f).coerceAtLeast(0.3f)  // 减速50%→26%
+                    for (target in targets) {
+                        val dx = target.x - player.x
+                        val dy = target.y - player.y
+                        val dist = hypot(dx, dy)
+                        if (dist > 1) {
+                            val speed = 480f
+                            val spike = Bullet(
+                                player.x, player.y,
+                                dx / dist * speed, dy / dist * speed,
+                                dmg, pierce = 1, lifetime = 2.5f,
+                                color = 0xFF4FC3F7.toInt(), size = 12f,
+                                bulletType = "ice_spike"
+                            )
+                            spike.slowFactor = slowFactor
+                            spike.slowDuration = 2f
+                            world.bullets.add(spike)
+                        }
+                    }
+                    cooldownTimer = cooldown
+                } else {
+                    cooldownTimer = 0.3f
+                }
+            }
+        }
+    }
+}
+
+// ============ 旋风斩 ============
+class WhirlwindSkill : Skill(
+    "旋风斩", "风刃围绕玩家旋转，持续近战伤害", 8, 0f
+) {
+    init { iconColor = 0xFFB0BEC5.toInt() }
+    override val evolutionName = "风暴领主"
+
+    override fun upgradeDescription(): String = when {
+        level == 0 -> "获得旋风斩：3道旋转风刃"
+        else -> "风刃数量+1，伤害+20%，范围+10%"
+    }
+
+    override fun update(player: Player, world: GameWorld, dt: Float) {
+        if (level == 0) return
+        // 旋风斩是持续效果，不需要cooldown，直接在world里维护
+        val bladeCount = if (evolved) 6 else 2 + level
+        val radius = if (evolved) 180f + level * 15f else 120f + level * 12f
+        val dmg = player.effectiveAtk * (0.6f + level * 0.12f)
+
+        world.whirlwindBlades.clear()
+        for (i in 0 until bladeCount) {
+            val angle = world.gameTime * 3f + (i.toFloat() / bladeCount) * 6.28f
+            val bx = player.x + cos(angle) * radius
+            val by = player.y + sin(angle) * radius
+            world.whirlwindBlades.add(WhirlwindBlade(bx, by, angle, radius, dmg, evolved))
+        }
+
+        // 风刃碰撞检测
+        for (blade in world.whirlwindBlades) {
+            for (e in world.enemies) {
+                if (!e.alive) continue
+                if (hypot(e.x - blade.x, e.y - blade.y) < e.radius + 20f) {
+                    if (blade.hitCooldown <= 0) {
+                        val killed = e.takeDamage(blade.damage)
+                        world.addFloatingText(e.x, e.y - 10, blade.damage.toInt().toString(), 0xFFB0BEC5.toInt(), size = 18f)
+                        // 超武：击退
+                        if (blade.powerful) {
+                            val d = hypot(e.x - player.x, e.y - player.y)
+                            if (d > 1) {
+                                e.x += (e.x - player.x) / d * 30f
+                                e.y += (e.y - player.y) / d * 30f
+                            }
+                        }
+                        if (killed) world.onEnemyKilled(e)
+                        blade.hitCooldown = 0.3f
+                    }
+                }
+            }
+        }
+    }
+}
+
 // ============ 属性升级选项（非技能） ============
 class StatUpgrade(
     val statName: String,

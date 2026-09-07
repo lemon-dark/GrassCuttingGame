@@ -20,6 +20,7 @@ class GameWorld {
     val explosions = mutableListOf<Explosion>()
     val orbitingKnives = mutableListOf<OrbitingKnife>()
     val meteorStrikes = mutableListOf<MeteorStrike>()
+    val whirlwindBlades = mutableListOf<WhirlwindBlade>()
 
     // 光环进化标志（用于渲染3层旋转环）
     var auraEvolved = false
@@ -56,7 +57,10 @@ class GameWorld {
 
     // 音效事件队列（GameView 消费）
     val soundEvents = mutableListOf<String>()
+    // 语音事件队列（GameView 消费）
+    val voiceEvents = mutableListOf<String>()
     private var pickupSoundTimer = 0f
+    private var voiceCooldown = 0f  // 语音冷却，避免太频繁
 
     // 受伤红屏闪烁
     var hurtFlashTimer = 0f
@@ -65,8 +69,15 @@ class GameWorld {
         soundEvents.add(name)
     }
 
+    fun playVoice(name: String) {
+        if (voiceCooldown <= 0) {
+            voiceEvents.add(name)
+            voiceCooldown = 0.8f  // 语音最小间隔0.8秒
+        }
+    }
+
     // 触发爆炸（冲击波环+粒子+震动+闪光）
-    fun triggerExplosion(x: Float, y: Float, radius: Float, color: Int, particleCount: Int = 30) {
+    fun triggerExplosion(x: Float, y: Float, radius: Float, color: Int, particleCount: Int = 30, withFlash: Boolean = true, withShake: Boolean = true) {
         explosions.add(Explosion(x, y, radius, color))
         // 粒子爆发
         val count = particleCount.coerceAtMost(50)
@@ -82,8 +93,8 @@ class GameWorld {
                 startColor = color, endColor = 0xFFFFFFFF.toInt()
             ))
         }
-        triggerShake(radius * 0.03f, 0.2f)
-        triggerFlash(0xFFFFFFFF.toInt(), 0.08f)
+        if (withShake) triggerShake(radius * 0.03f, 0.2f)
+        if (withFlash) triggerFlash(0xFFFFFFFF.toInt(), 0.08f)
     }
 
     fun triggerShake(amount: Float, duration: Float) {
@@ -106,6 +117,7 @@ class GameWorld {
     private var spawnTimer = 0f
     private var eliteWaveTimer = 0f
     private var bossSpawned = false
+    private var finalWaveAnnounced = false
 
     private val spatialGrid = SpatialGrid(120f)
     private val random = Random(System.currentTimeMillis())
@@ -128,8 +140,9 @@ class GameWorld {
         player.maxHpBonus = 0f; player.critChance = 0f
         enemies.clear(); bullets.clear(); xpGems.clear()
         floatingTexts.clear(); particles.clear(); lightningBolts.clear(); soundEvents.clear()
-        explosions.clear(); orbitingKnives.clear(); meteorStrikes.clear()
-        spawnTimer = 0f; eliteWaveTimer = 0f; bossSpawned = false
+        explosions.clear(); orbitingKnives.clear(); meteorStrikes.clear(); whirlwindBlades.clear()
+        voiceEvents.clear()
+        spawnTimer = 0f; eliteWaveTimer = 0f; bossSpawned = false; finalWaveAnnounced = false
         auraActive = false; auraEvolved = false
         timeScale = 1f; slowMoDuration = 0f
         evolutionNotice = null
@@ -164,6 +177,7 @@ class GameWorld {
         gameTime += sdt
         if (pickupSoundTimer > 0) pickupSoundTimer -= sdt
         if (hurtFlashTimer > 0) hurtFlashTimer -= sdt
+        if (voiceCooldown > 0) voiceCooldown -= sdt
 
         // 胜利条件
         if (gameTime >= GameConfig.GAME_DURATION && enemies.isEmpty()) {
@@ -184,6 +198,10 @@ class GameWorld {
             val m = mIter.next()
             m.update(this, dt)
             if (!m.alive) mIter.remove()
+        }
+        // 旋风斩风刃冷却更新
+        for (blade in whirlwindBlades) {
+            if (blade.hitCooldown > 0) blade.hitCooldown -= sdt
         }
         updateEffects(dt)  // 特效用真实时间（慢动作时特效正常速度）
         spawnEnemies(sdt)
@@ -236,6 +254,32 @@ class GameWorld {
         val iter = bullets.iterator()
         while (iter.hasNext()) {
             val b = iter.next()
+
+            // 追踪导弹：每帧调整速度方向指向最近敌人
+            if (b.homing) {
+                var nearest: Enemy? = null
+                var minDist = 600f
+                for (e in enemies) {
+                    if (!e.alive) continue
+                    val d = b.distTo(e)
+                    if (d < minDist) { minDist = d; nearest = e }
+                }
+                if (nearest != null) {
+                    val dx = nearest.x - b.x
+                    val dy = nearest.y - b.y
+                    val dist = hypot(dx, dy)
+                    if (dist > 1) {
+                        val targetVx = dx / dist
+                        val targetVy = dy / dist
+                        val curSpeed = hypot(b.vx, b.vy)
+                        // 平滑转向
+                        val t = (b.homingStrength * dt).coerceAtMost(1f)
+                        b.vx = (b.vx / curSpeed * (1 - t) + targetVx * t) * curSpeed
+                        b.vy = (b.vy / curSpeed * (1 - t) + targetVy * t) * curSpeed
+                    }
+                }
+            }
+
             b.x += b.vx * dt
             b.y += b.vy * dt
             b.lifetime -= dt
@@ -273,6 +317,12 @@ class GameWorld {
                         size = if (isCrit) 64f else 48f)
                     if (killed) onEnemyKilled(e)
 
+                    // 冰锥减速效果
+                    if (b.slowDuration > 0) {
+                        e.slowTimer = b.slowDuration
+                        e.slowFactor = b.slowFactor
+                    }
+
                     // 火球爆炸
                     if (b.explosionRadius > 0) {
                         explode(b.x, b.y, b.explosionRadius, b.damage * 0.6f)
@@ -289,28 +339,24 @@ class GameWorld {
     }
 
     private fun explode(x: Float, y: Float, radius: Float, damage: Float) {
-        // 爆炸冲击波环
-        explosions.add(Explosion(x, y, radius, 0xFFFF6D00.toInt(), 0.35f))
-        // 屏幕震动
-        triggerShake(radius * 0.04f, 0.2f)
-        // 全屏闪光
-        triggerFlash(0xFFFF9800.toInt(), 0.06f)
-        // 爆炸粒子（增强：更多、更大、更亮、多色）
-        val explosionColors = intArrayOf(0xFFFF5722.toInt(), 0xFFFF9800.toInt(), 0xFFFFEB3B.toInt(), 0xFFFFF176.toInt())
-        for (i in 0..35) {
+        // 爆炸冲击波环（暗色，不抢终极大招的风头）
+        explosions.add(Explosion(x, y, radius, 0xFFE65100.toInt(), 0.3f))
+        // 屏幕震动（小幅）
+        triggerShake(radius * 0.02f, 0.12f)
+        // 爆炸粒子（减少数量、暗色、无全屏闪光）
+        val explosionColors = intArrayOf(0xFFE65100.toInt(), 0xFFEF6C00.toInt(), 0xFFF57F17.toInt())
+        for (i in 0..18) {
             val angle = random.nextFloat() * 6.28f
-            val speed = 150 + random.nextFloat() * 350
+            val speed = 120 + random.nextFloat() * 250
             particles.add(Particle(
                 x, y,
                 cos(angle) * speed, sin(angle) * speed,
                 explosionColors[random.nextInt(explosionColors.size)],
-                5 + random.nextFloat() * 8,
-                0.35f + random.nextFloat() * 0.25f,
+                4 + random.nextFloat() * 5,
+                0.3f + random.nextFloat() * 0.2f,
                 gravity = 100f, drag = 0.95f
             ))
         }
-        // 中心闪光
-        particles.add(Particle(x, y, 0f, 0f, 0xFFFFFFFF.toInt(), radius * 0.6f, 0.15f))
         for (e in enemies) {
             if (!e.alive) continue
             if (hypot(e.x - x, e.y - y) < radius + e.radius) {
@@ -329,14 +375,20 @@ class GameWorld {
             if (!e.alive) continue
             if (e.hitFlash > 0) e.hitFlash -= dt
             if (e.attackCooldown > 0) e.attackCooldown -= dt
+            // 减速效果递减
+            if (e.slowTimer > 0) {
+                e.slowTimer -= dt
+                if (e.slowTimer <= 0) e.slowFactor = 1f
+            }
 
             // 追踪玩家
             val dx = player.x - e.x
             val dy = player.y - e.y
             val dist = hypot(dx, dy)
             if (dist > 1) {
-                e.x += (dx / dist) * e.speed * dt
-                e.y += (dy / dist) * e.speed * dt
+                val effectiveSpeed = e.speed * e.slowFactor
+                e.x += (dx / dist) * effectiveSpeed * dt
+                e.y += (dy / dist) * effectiveSpeed * dt
                 // 朝向
                 if (dx > 0) e.facingRight = true else e.facingRight = false
                 // 行走动画：速度越快帧切换越快
@@ -359,6 +411,11 @@ class GameWorld {
                     player.takeDamage(e.damage)
                     playSound("hurt")
                     hurtFlashTimer = 0.3f
+                    if (random.nextFloat() < 0.15f) playVoice("hurt")
+                    // 低血量语音
+                    if (player.hp < player.effectiveMaxHp * 0.3f && random.nextFloat() < 0.2f) {
+                        playVoice("lowhp")
+                    }
                 }
                 e.attackCooldown = 0.8f
                 // 击退
@@ -425,6 +482,7 @@ class GameWorld {
                     generateLevelUpOptions()
                     state = GameState.LEVEL_UP
                     playSound("levelup")
+                    playVoice("levelup")
                 } else if (pickupSoundTimer <= 0) {
                     playSound("pickup")
                     pickupSoundTimer = 0.12f
@@ -480,6 +538,15 @@ class GameWorld {
     }
 
     private fun spawnEnemies(dt: Float) {
+        // 到10分钟停止生成敌人，进入清场阶段
+        if (gameTime >= GameConfig.GAME_DURATION) {
+            if (!finalWaveAnnounced) {
+                finalWaveAnnounced = true
+                playSound("warning")
+                addFloatingText(player.x, player.y - 100, "最终波次！清场后胜利！", 0xFFFF6D00.toInt(), lifetime = 3f, size = 48f)
+            }
+            return
+        }
         spawnTimer -= dt
         // 生成速率随时间增加
         val spawnInterval = maxOf(0.25f, 1.5f - gameTime * 0.005f)
@@ -533,6 +600,15 @@ class GameWorld {
 
     fun onEnemyKilled(e: Enemy) {
         player.kills++
+        // 战斗语音：普通敌人1%概率（割草杀太多，不能太频繁），精英/Boss 15%概率
+        when (e.type) {
+            EnemyType.BOSS, EnemyType.ELITE -> {
+                if (random.nextFloat() < 0.15f) playVoice("kill")
+            }
+            else -> {
+                if (random.nextFloat() < 0.01f) playVoice("attack")
+            }
+        }
         // 掉经验宝石
         val gemCount = when (e.type) {
             EnemyType.BOSS -> 20
@@ -558,7 +634,7 @@ class GameWorld {
             val angle = (i.toFloat() / shockCount) * 6.28f
             particles.add(Particle(e.x, e.y, cos(angle)*shockSpeed, sin(angle)*shockSpeed, 0xFFFFFFFF.toInt(), 4f, 0.25f))
         }
-        // 爆炸特效（冲击波环）
+        // 爆炸特效（冲击波环）——精英/坦克低强度无闪光，Boss保留全屏特效突出终极大招
         when (e.type) {
             EnemyType.BOSS -> {
                 triggerExplosion(e.x, e.y, 400f, 0xFFFF6D00.toInt(), 50)
@@ -566,15 +642,16 @@ class GameWorld {
                 playSound("death")
             }
             EnemyType.ELITE -> {
-                triggerExplosion(e.x, e.y, 250f, 0xFFD500F9.toInt(), 35)
-                triggerSlowMotion(0.25f)
+                // 精英怪：无全屏闪光、小震动、少粒子、短慢动作
+                triggerExplosion(e.x, e.y, 180f, 0xFFD500F9.toInt(), 18, withFlash = false, withShake = true)
+                triggerSlowMotion(0.12f)
             }
             EnemyType.TANK -> {
-                triggerExplosion(e.x, e.y, 150f, 0xFF9D00FF.toInt(), 20)
+                // 坦克：无闪光无震动，仅冲击波环
+                triggerExplosion(e.x, e.y, 120f, 0xFF9D00FF.toInt(), 10, withFlash = false, withShake = false)
             }
             else -> {
-                // 普通敌人小爆炸
-                explosions.add(Explosion(e.x, e.y, 60f, color, 0.2f))
+                // 普通敌人：不显示爆炸环（太频繁），仅保留死亡粒子
             }
         }
     }
@@ -626,7 +703,7 @@ class GameWorld {
 
     private fun generateLevelUpOptions() {
         val options = mutableListOf<Any>()
-        val allSkills = listOf(KnifeSkill(), FireballSkill(), LightningSkill(), AuraSkill())
+        val allSkills = listOf(KnifeSkill(), FireballSkill(), LightningSkill(), AuraSkill(), MissileSkill(), IceSpikeSkill(), WhirlwindSkill())
 
         // 可升级的已有技能
         val upgradableSkills = player.skills.filter { it.canUpgrade() && it !is BasicAttackSkill }
@@ -686,12 +763,16 @@ class GameWorld {
                 is FireballSkill -> player.pickupRangeBonus >= 30f
                 is LightningSkill -> player.critChance >= 0.15f
                 is AuraSkill -> player.maxHpBonus >= 30f
+                is MissileSkill -> player.atkBonus >= 25f
+                is IceSpikeSkill -> player.pickupRangeBonus >= 25f
+                is WhirlwindSkill -> player.moveSpeedBonus >= 60f
                 else -> false
             }
             if (canEvolve) {
                 skill.evolved = true
                 evolutionNotice = skill.evolutionName to System.currentTimeMillis()
                 playSound("levelup")
+                playVoice("ultimate")
                 triggerFlash(0xFF00E5FF.toInt(), 0.2f)
                 triggerShake(8f, 0.3f)
             }
