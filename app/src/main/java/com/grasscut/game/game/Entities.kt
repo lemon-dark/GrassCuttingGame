@@ -85,23 +85,23 @@ class Enemy(x: Float, y: Float, val type: EnemyType, gameTime: Float) : Entity(x
     var attackCooldown = 0f
 
     init {
-        // 随时间增强（放缓，避免怪物太强）
-        val timeScale = 1f + gameTime / 220f
+        // 随时间增强（进一步放缓，避免血量膨胀过快）
+        val timeScale = 1f + gameTime / 320f
         when (type) {
             EnemyType.NORMAL -> {
-                radius = 22f; hp = 15f * timeScale; damage = 5f; speed = 70f; xpValue = 1
+                radius = 22f; hp = 12f * timeScale; damage = 5f; speed = 70f; xpValue = 1
             }
             EnemyType.FAST -> {
-                radius = 18f; hp = 8f * timeScale; damage = 3f; speed = 140f; xpValue = 1
+                radius = 18f; hp = 7f * timeScale; damage = 3f; speed = 140f; xpValue = 1
             }
             EnemyType.TANK -> {
-                radius = 32f; hp = 60f * timeScale; damage = 12f; speed = 45f; xpValue = 3
+                radius = 32f; hp = 45f * timeScale; damage = 12f; speed = 45f; xpValue = 3
             }
             EnemyType.ELITE -> {
-                radius = 38f; hp = 200f * timeScale; damage = 20f; speed = 60f; xpValue = 10
+                radius = 38f; hp = 120f * timeScale; damage = 18f; speed = 60f; xpValue = 10
             }
             EnemyType.BOSS -> {
-                radius = 70f; hp = 1500f * timeScale; damage = 35f; speed = 50f; xpValue = 100
+                radius = 70f; hp = 900f * timeScale; damage = 30f; speed = 50f; xpValue = 100
             }
         }
         maxHp = hp

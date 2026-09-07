@@ -13,7 +13,7 @@ object GameConfig {
     const val PLAYER_ATK_SPEED = 1.2f
     const val PLAYER_MOVE_SPEED = 260f
     const val PLAYER_PICKUP_RANGE = 150f
-    const val PLAYER_RADIUS = 32f
+    const val PLAYER_RADIUS = 42f
 
     // 经验曲线（降低升级所需经验，加快成长）
     fun xpToNext(level: Int): Int = (4 + level * level * 2).toInt()

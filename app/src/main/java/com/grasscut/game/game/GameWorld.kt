@@ -5,7 +5,7 @@ import kotlin.math.sin
 import kotlin.math.hypot
 import kotlin.random.Random
 
-enum class GameState { MENU, PLAYING, LEVEL_UP, GAME_OVER, VICTORY }
+enum class GameState { MENU, PLAYING, PAUSED, LEVEL_UP, GAME_OVER, VICTORY }
 
 class GameWorld {
     var state = GameState.MENU
@@ -71,6 +71,18 @@ class GameWorld {
         floatingTexts.clear(); particles.clear(); lightningBolts.clear(); soundEvents.clear()
         spawnTimer = 0f; eliteWaveTimer = 0f; bossSpawned = false
         auraActive = false
+    }
+
+    fun pause() {
+        if (state == GameState.PLAYING) state = GameState.PAUSED
+    }
+
+    fun resume() {
+        if (state == GameState.PAUSED) state = GameState.PLAYING
+    }
+
+    fun backToMenu() {
+        state = GameState.MENU
     }
 
     fun update(dt: Float) {
@@ -245,20 +257,29 @@ class GameWorld {
             }
         }
 
-        // 敌人间简单分离（只对附近的）
-        for (e in enemies) {
-            if (!e.alive) continue
-            val nearby = spatialGrid.queryNear(e, e.radius * 2)
-            for (other in nearby) {
-                if (other === e || other !is Enemy || !other.alive) continue
-                val dx = e.x - other.x
-                val dy = e.y - other.y
-                val d = hypot(dx, dy)
-                val minDist = e.radius + other.radius
-                if (d < minDist && d > 0.1f) {
-                    val push = (minDist - d) * 0.3f
-                    e.x += (dx / d) * push
-                    e.y += (dy / d) * push
+        // 敌人分离：防止大量敌人重叠推挤
+        separateEnemies()
+    }
+
+    private fun separateEnemies() {
+        for (e1 in enemies) {
+            if (!e1.alive) continue
+            val nearby = spatialGrid.queryNear(e1, 80f)
+            for (obj in nearby) {
+                if (obj === e1 || obj !is Enemy || !obj.alive) continue
+                val e2 = obj
+                val dx = e2.x - e1.x
+                val dy = e2.y - e1.y
+                val dist = hypot(dx, dy)
+                val minDist = (e1.radius + e2.radius) * 0.75f
+                if (dist > 0.1f && dist < minDist) {
+                    val push = (minDist - dist) * 0.35f
+                    val nx = dx / dist
+                    val ny = dy / dist
+                    e1.x -= nx * push * 0.5f
+                    e1.y -= ny * push * 0.5f
+                    e2.x += nx * push * 0.5f
+                    e2.y += ny * push * 0.5f
                 }
             }
         }

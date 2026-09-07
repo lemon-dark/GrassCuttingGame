@@ -226,7 +226,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             }
             drawJoystick(canvas)
 
-            if (world.state == GameState.LEVEL_UP) {
+            if (world.state == GameState.PAUSED) {
+                drawPaused(canvas)
+            } else if (world.state == GameState.LEVEL_UP) {
                 drawLevelUp(canvas)
             } else if (world.state == GameState.GAME_OVER) {
                 drawGameOver(canvas)
@@ -514,9 +516,9 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         canvas.drawText("击杀: ${p.kills}", canvasWidth - 20f, 55f, textPaint)
 
         // 技能图标栏（底部中间）
-        val skillY = canvasHeight - 50f
-        val skillSize = 36f
-        val skillGap = 8f
+        val skillY = canvasHeight - 58f
+        val skillSize = 44f
+        val skillGap = 10f
         val totalW = p.skills.size * skillSize + (p.skills.size - 1) * skillGap
         var skillX = (canvasWidth - totalW) / 2
         for (skill in p.skills) {
@@ -533,6 +535,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             }
             skillX += skillSize + skillGap
         }
+
+        // 暂停按钮（右上角）
+        val pauseBtnSize = 56f
+        val pauseX = canvasWidth - pauseBtnSize - 12f
+        val pauseY = 12f
+        paint.color = 0x66000000.toInt()
+        canvas.drawRoundRect(RectF(pauseX, pauseY, pauseX + pauseBtnSize, pauseY + pauseBtnSize), 12f, 12f, paint)
+        paint.color = Color.WHITE
+        // 两个竖条表示暂停
+        canvas.drawRect(pauseX + 18f, pauseY + 16f, pauseX + 24f, pauseY + 40f, paint)
+        canvas.drawRect(pauseX + 32f, pauseY + 16f, pauseX + 38f, pauseY + 40f, paint)
     }
 
     // ============ 虚拟摇杆 ============
@@ -554,17 +567,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         canvas.drawRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat(), paint)
 
         textPaint.color = 0xFFFFEB3B.toInt()
-        textPaint.textSize = 36f
+        textPaint.textSize = 44f
         textPaint.isFakeBoldText = true
         textPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("升级！选择一项", canvasWidth / 2f, 100f, textPaint)
+        canvas.drawText("升级！选择一项", canvasWidth / 2f, 110f, textPaint)
         textPaint.isFakeBoldText = false
 
-        val cardW = min(canvasWidth - 60f, 900f) / 3f - 15f
-        val cardH = 200f
+        val cardW = min(canvasWidth - 40f, 900f) / 3f - 12f
+        val cardH = 280f
         val cardY = (canvasHeight - cardH) / 2f
-        val totalW = cardW * 3 + 30f
-        var cardX = (canvasWidth - totalW) / 2f + 7.5f
+        val totalW = cardW * 3 + 24f
+        var cardX = (canvasWidth - totalW) / 2f + 6f
 
         for ((index, option) in world.levelUpOptions.withIndex()) {
             val rect = RectF(cardX, cardY, cardX + cardW, cardY + cardH)
@@ -579,33 +592,33 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             when (option) {
                 is Skill -> {
                     paint.color = option.iconColor
-                    canvas.drawCircle(cardX + cardW / 2, cardY + 50f, 28f, paint)
+                    canvas.drawCircle(cardX + cardW / 2, cardY + 60f, 36f, paint)
                     textPaint.color = Color.WHITE
-                    textPaint.textSize = 18f
+                    textPaint.textSize = 22f
                     textPaint.isFakeBoldText = true
-                    canvas.drawText(option.name, cardX + cardW / 2, cardY + 105f, textPaint)
+                    canvas.drawText(option.name, cardX + cardW / 2, cardY + 125f, textPaint)
                     textPaint.isFakeBoldText = false
-                    textPaint.textSize = 13f
+                    textPaint.textSize = 16f
                     textPaint.color = 0xFFBDBDBD.toInt()
                     val desc = if (option.level == 0) option.description else option.upgradeDescription()
-                    drawTextWrapped(canvas, desc, cardX + cardW / 2, cardY + 130f, cardW - 20f, 13f)
+                    drawTextWrapped(canvas, desc, cardX + cardW / 2, cardY + 155f, cardW - 20f, 16f)
                     if (option.level > 0) {
                         textPaint.color = 0xFFFFEB3B.toInt()
-                        textPaint.textSize = 12f
-                        canvas.drawText("当前等级: ${option.level}", cardX + cardW / 2, cardY + cardH - 15f, textPaint)
+                        textPaint.textSize = 14f
+                        canvas.drawText("当前等级: ${option.level}", cardX + cardW / 2, cardY + cardH - 20f, textPaint)
                     }
                 }
                 is StatUpgrade -> {
                     paint.color = option.color
-                    canvas.drawCircle(cardX + cardW / 2, cardY + 50f, 28f, paint)
+                    canvas.drawCircle(cardX + cardW / 2, cardY + 60f, 36f, paint)
                     textPaint.color = Color.WHITE
-                    textPaint.textSize = 18f
+                    textPaint.textSize = 22f
                     textPaint.isFakeBoldText = true
-                    canvas.drawText(option.statName, cardX + cardW / 2, cardY + 105f, textPaint)
+                    canvas.drawText(option.statName, cardX + cardW / 2, cardY + 125f, textPaint)
                     textPaint.isFakeBoldText = false
-                    textPaint.textSize = 14f
+                    textPaint.textSize = 16f
                     textPaint.color = 0xFFE0E0E0.toInt()
-                    canvas.drawText(option.desc, cardX + cardW / 2, cardY + 140f, textPaint)
+                    canvas.drawText(option.desc, cardX + cardW / 2, cardY + 165f, textPaint)
                 }
             }
             cardX += cardW + 15f
@@ -650,22 +663,22 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         canvas.drawText("坚持 15 分钟击败最终 Boss 即可胜利", canvasWidth / 2f, canvasHeight / 2f + 35f, textPaint)
 
         // 开始按钮
-        val btnW = 240f
-        val btnH = 70f
+        val btnW = 320f
+        val btnH = 84f
         val btnX = (canvasWidth - btnW) / 2
         val btnY = canvasHeight / 2f + 80f
         paint.color = 0xFF4CAF50.toInt()
         canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 16f, 16f, paint)
         textPaint.color = Color.WHITE
-        textPaint.textSize = 28f
+        textPaint.textSize = 32f
         textPaint.isFakeBoldText = true
-        canvas.drawText("开始游戏", canvasWidth / 2f, btnY + 46f, textPaint)
+        canvas.drawText("开始游戏", canvasWidth / 2f, btnY + 54f, textPaint)
 
         // 设置按钮
-        val setY = btnY + btnH + 20f
+        val setY = btnY + btnH + 24f
         paint.color = 0xFF546E7A.toInt()
         canvas.drawRoundRect(RectF(btnX, setY, btnX + btnW, setY + btnH), 16f, 16f, paint)
-        canvas.drawText("设置", canvasWidth / 2f, setY + 46f, textPaint)
+        canvas.drawText("设置", canvasWidth / 2f, setY + 54f, textPaint)
         textPaint.isFakeBoldText = false
     }
 
@@ -675,10 +688,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         canvas.drawRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat(), paint)
 
         textPaint.color = Color.WHITE
-        textPaint.textSize = 40f
+        textPaint.textSize = 48f
         textPaint.isFakeBoldText = true
         textPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("设置", canvasWidth / 2f, 100f, textPaint)
+        canvas.drawText("设置", canvasWidth / 2f, 110f, textPaint)
         textPaint.isFakeBoldText = false
 
         val volText = when {
@@ -700,52 +713,52 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             Triple("摇杆大小", joyText, "joystick")
         )
 
-        val rowH = 70f
-        val startY = 160f
-        val rowW = canvasWidth - 80f
-        val rowX = 40f
+        val rowH = 84f
+        val startY = 170f
+        val rowW = canvasWidth - 60f
+        val rowX = 30f
 
         for ((i, item) in items.withIndex()) {
             val ry = startY + i * rowH
             // 行背景
             paint.color = 0xFF1A1A2E.toInt()
-            canvas.drawRoundRect(RectF(rowX, ry, rowX + rowW, ry + rowH - 10f), 12f, 12f, paint)
+            canvas.drawRoundRect(RectF(rowX, ry, rowX + rowW, ry + rowH - 12f), 14f, 14f, paint)
             // 标签
             textPaint.color = 0xFFB0BEC5.toInt()
-            textPaint.textSize = 22f
+            textPaint.textSize = 26f
             textPaint.textAlign = Paint.Align.LEFT
-            canvas.drawText(item.first, rowX + 24f, ry + 42f, textPaint)
+            canvas.drawText(item.first, rowX + 28f, ry + 50f, textPaint)
             // 值
             textPaint.color = 0xFF4FC3F7.toInt()
-            textPaint.textSize = 22f
+            textPaint.textSize = 26f
             textPaint.isFakeBoldText = true
             textPaint.textAlign = Paint.Align.RIGHT
-            canvas.drawText(item.second, rowX + rowW - 24f, ry + 42f, textPaint)
+            canvas.drawText(item.second, rowX + rowW - 28f, ry + 50f, textPaint)
             textPaint.isFakeBoldText = false
         }
 
         // 返回按钮
-        val backY = startY + items.size * rowH + 20f
+        val backY = startY + items.size * rowH + 24f
         paint.color = 0xFF546E7A.toInt()
-        canvas.drawRoundRect(RectF(rowX, backY, rowX + rowW, backY + 60f), 12f, 12f, paint)
+        canvas.drawRoundRect(RectF(rowX, backY, rowX + rowW, backY + 72f), 14f, 14f, paint)
         textPaint.color = Color.WHITE
-        textPaint.textSize = 24f
+        textPaint.textSize = 28f
         textPaint.isFakeBoldText = true
         textPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("返回", canvasWidth / 2f, backY + 40f, textPaint)
+        canvas.drawText("返回", canvasWidth / 2f, backY + 48f, textPaint)
         textPaint.isFakeBoldText = false
     }
 
     private fun handleSettingsTouch(x: Float, y: Float) {
-        val rowH = 70f
-        val startY = 160f
-        val rowW = canvasWidth - 80f
-        val rowX = 40f
+        val rowH = 84f
+        val startY = 170f
+        val rowW = canvasWidth - 60f
+        val rowX = 30f
         val keys = listOf("sound", "volume", "particles", "damage", "shake", "joystick")
 
         for ((i, key) in keys.withIndex()) {
             val ry = startY + i * rowH
-            if (x in rowX..(rowX + rowW) && y in ry..(ry + rowH - 10f)) {
+            if (x in rowX..(rowX + rowW) && y in ry..(ry + rowH - 12f)) {
                 when (key) {
                     "sound" -> Settings.setSoundEnabled(!Settings.soundEnabled)
                     "volume" -> {
@@ -774,9 +787,43 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         }
 
         // 返回按钮
-        val backY = startY + keys.size * rowH + 20f
-        if (x in rowX..(rowX + rowW) && y in backY..(backY + 60f)) {
+        val backY = startY + keys.size * rowH + 24f
+        if (x in rowX..(rowX + rowW) && y in backY..(backY + 72f)) {
             inSettings = false
+        }
+    }
+
+    // ============ 暂停界面 ============
+    private fun drawPaused(canvas: Canvas) {
+        paint.color = 0xCC000000.toInt()
+        canvas.drawRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat(), paint)
+
+        textPaint.color = Color.WHITE
+        textPaint.textSize = 48f
+        textPaint.isFakeBoldText = true
+        textPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText("已暂停", canvasWidth / 2f, canvasHeight / 2f - 100f, textPaint)
+        textPaint.isFakeBoldText = false
+
+        val btnW = min(canvasWidth - 80f, 400f)
+        val btnH = 72f
+        val btnX = (canvasWidth - btnW) / 2
+        var btnY = canvasHeight / 2f - 40f
+
+        val buttons = listOf(
+            "继续游戏" to 0xFF4CAF50.toInt(),
+            "重新开始" to 0xFFFF9800.toInt(),
+            "返回主菜单" to 0xFF546E7A.toInt()
+        )
+        for ((text, color) in buttons) {
+            paint.color = color
+            canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 14f, 14f, paint)
+            textPaint.color = Color.WHITE
+            textPaint.textSize = 26f
+            textPaint.isFakeBoldText = true
+            canvas.drawText(text, canvasWidth / 2f, btnY + 46f, textPaint)
+            textPaint.isFakeBoldText = false
+            btnY += btnH + 20f
         }
     }
 
@@ -785,10 +832,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         canvas.drawRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat(), paint)
 
         textPaint.color = 0xFFEF5350.toInt()
-        textPaint.textSize = 56f
+        textPaint.textSize = 64f
         textPaint.isFakeBoldText = true
         textPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("游戏结束", canvasWidth / 2f, canvasHeight / 2f - 60f, textPaint)
+        canvas.drawText("游戏结束", canvasWidth / 2f, canvasHeight / 2f - 80f, textPaint)
         textPaint.isFakeBoldText = false
 
         drawStats(canvas)
@@ -800,10 +847,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         canvas.drawRect(0f, 0f, canvasWidth.toFloat(), canvasHeight.toFloat(), paint)
 
         textPaint.color = 0xFFFFEB3B.toInt()
-        textPaint.textSize = 56f
+        textPaint.textSize = 64f
         textPaint.isFakeBoldText = true
         textPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("胜利！", canvasWidth / 2f, canvasHeight / 2f - 60f, textPaint)
+        canvas.drawText("胜利！", canvasWidth / 2f, canvasHeight / 2f - 80f, textPaint)
         textPaint.isFakeBoldText = false
 
         drawStats(canvas)
@@ -812,26 +859,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
     private fun drawStats(canvas: Canvas) {
         textPaint.color = Color.WHITE
-        textPaint.textSize = 22f
+        textPaint.textSize = 28f
         textPaint.textAlign = Paint.Align.CENTER
         val minutes = (world.gameTime / 60).toInt()
         val seconds = (world.gameTime % 60).toInt()
         canvas.drawText("存活时间: ${String.format("%02d:%02d", minutes, seconds)}", canvasWidth / 2f, canvasHeight / 2f, textPaint)
-        canvas.drawText("击杀数: ${world.player.kills}", canvasWidth / 2f, canvasHeight / 2f + 35f, textPaint)
-        canvas.drawText("达到等级: ${world.player.level}", canvasWidth / 2f, canvasHeight / 2f + 70f, textPaint)
+        canvas.drawText("击杀数: ${world.player.kills}", canvasWidth / 2f, canvasHeight / 2f + 45f, textPaint)
+        canvas.drawText("达到等级: ${world.player.level}", canvasWidth / 2f, canvasHeight / 2f + 90f, textPaint)
     }
 
     private fun drawRestartButton(canvas: Canvas) {
-        val btnW = 240f
-        val btnH = 70f
+        val btnW = 320f
+        val btnH = 84f
         val btnX = (canvasWidth - btnW) / 2
-        val btnY = canvasHeight / 2f + 120f
+        val btnY = canvasHeight / 2f + 140f
         paint.color = 0xFF4CAF50.toInt()
         canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 16f, 16f, paint)
         textPaint.color = Color.WHITE
-        textPaint.textSize = 26f
+        textPaint.textSize = 32f
         textPaint.isFakeBoldText = true
-        canvas.drawText("再来一局", canvasWidth / 2f, btnY + 45f, textPaint)
+        canvas.drawText("再来一局", canvasWidth / 2f, btnY + 54f, textPaint)
         textPaint.isFakeBoldText = false
     }
 
@@ -849,14 +896,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                     if (inSettings) {
                         handleSettingsTouch(x, y)
                     } else {
-                        val btnW = 240f; val btnH = 70f
+                        val btnW = 320f; val btnH = 84f
                         val btnX = (canvasWidth - btnW) / 2
                         val btnY = canvasHeight / 2f + 80f
                         if (x in btnX..(btnX + btnW) && y in btnY..(btnY + btnH)) {
                             world.startGame()
                         }
                         // 设置按钮
-                        val setY = btnY + btnH + 20f
+                        val setY = btnY + btnH + 24f
                         if (x in btnX..(btnX + btnW) && y in setY..(setY + btnH)) {
                             inSettings = true
                         }
@@ -865,11 +912,11 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             }
             GameState.LEVEL_UP -> {
                 if (action == MotionEvent.ACTION_DOWN) {
-                    val cardW = min(canvasWidth - 60f, 900f) / 3f - 15f
-                    val cardH = 200f
+                    val cardW = min(canvasWidth - 40f, 900f) / 3f - 12f
+                    val cardH = 280f
                     val cardY = (canvasHeight - cardH) / 2f
-                    val totalW = cardW * 3 + 30f
-                    var cardX = (canvasWidth - totalW) / 2f + 7.5f
+                    val totalW = cardW * 3 + 24f
+                    var cardX = (canvasWidth - totalW) / 2f + 6f
                     for (option in world.levelUpOptions) {
                         if (x in cardX..(cardX + cardW) && y in cardY..(cardY + cardH)) {
                             world.selectLevelUpOption(option)
@@ -881,17 +928,45 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             }
             GameState.GAME_OVER, GameState.VICTORY -> {
                 if (action == MotionEvent.ACTION_DOWN) {
-                    val btnW = 240f; val btnH = 70f
+                    val btnW = 320f; val btnH = 84f
                     val btnX = (canvasWidth - btnW) / 2
-                    val btnY = canvasHeight / 2f + 120f
+                    val btnY = canvasHeight / 2f + 140f
                     if (x in btnX..(btnX + btnW) && y in btnY..(btnY + btnH)) {
                         world.startGame()
+                    }
+                }
+            }
+            GameState.PAUSED -> {
+                if (action == MotionEvent.ACTION_DOWN) {
+                    val btnW = min(canvasWidth - 80f, 400f)
+                    val btnH = 72f
+                    val btnX = (canvasWidth - btnW) / 2
+                    val baseY = canvasHeight / 2f - 40f
+                    // 继续游戏
+                    if (x in btnX..(btnX + btnW) && y in baseY..(baseY + btnH)) {
+                        world.resume()
+                    }
+                    // 重新开始
+                    val restartY = baseY + btnH + 20f
+                    if (x in btnX..(btnX + btnW) && y in restartY..(restartY + btnH)) {
+                        world.startGame()
+                    }
+                    // 返回主菜单
+                    val menuY = restartY + btnH + 20f
+                    if (x in btnX..(btnX + btnW) && y in menuY..(menuY + btnH)) {
+                        world.backToMenu()
                     }
                 }
             }
             GameState.PLAYING -> {
                 when (action) {
                     MotionEvent.ACTION_DOWN -> {
+                        // 检测暂停按钮
+                        val pauseX = canvasWidth - 68f
+                        if (x in pauseX..(pauseX + 56f) && y in 12f..68f) {
+                            world.pause()
+                            return true
+                        }
                         // 全屏任意位置触摸都出摇杆，底座跟随手指
                         joystickActive = true
                         joystickPointerId = pointerId

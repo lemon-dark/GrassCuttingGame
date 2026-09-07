@@ -78,7 +78,7 @@ class BasicAttackSkill : Skill(
                     world.bullets.add(Bullet(
                         player.x, player.y,
                         dx / dist * speed, dy / dist * speed,
-                        player.effectiveAtk * 0.8f,
+                        player.effectiveAtk * 1.0f,
                         pierce = 0, lifetime = 2f,
                         color = 0xFF81D4FA.toInt(), size = 5f
                     ))
@@ -107,7 +107,7 @@ class KnifeSkill : Skill(
         if (cooldownTimer <= 0) {
             val targets = findNearestEnemies(player, world, level, 750f)
             if (targets.isNotEmpty()) playShootSound(world, 0.15f)
-            val dmg = player.effectiveAtk * (1.2f + level * 0.15f)
+            val dmg = player.effectiveAtk * (1.5f + level * 0.2f)
             for (target in targets) {
                 val dx = target.x - player.x
                 val dy = target.y - player.y
@@ -152,7 +152,7 @@ class FireballSkill : Skill(
                 val dist = hypot(dx, dy)
                 if (dist > 1) {
                     val speed = 350f
-                    val dmg = player.effectiveAtk * (2f + level * 0.25f)
+                    val dmg = player.effectiveAtk * (2.5f + level * 0.3f)
                     val radius = 70f + level * 10f
                     val fb = Bullet(
                         player.x, player.y,
@@ -192,7 +192,7 @@ class LightningSkill : Skill(
             if (firstTarget != null) {
                 playShootSound(world, 0.2f)
                 val jumps = 2 + level
-                val dmg = player.effectiveAtk * (1.5f + level * 0.2f)
+                val dmg = player.effectiveAtk * (2.0f + level * 0.25f)
                 world.castLightning(player.x, player.y, firstTarget, jumps, dmg)
                 cooldownTimer = cooldown
             } else {
@@ -216,10 +216,14 @@ class AuraSkill : Skill(
 
     override fun update(player: Player, world: GameWorld, dt: Float) {
         if (level == 0) return
+        // 每帧都显示光环（不再闪烁）
+        val range = 100f + level * 15f
+        world.auraRadius = range
+        world.auraActive = true
+
         tickTimer -= dt
         if (tickTimer <= 0) {
-            val range = 100f + level * 15f
-            val dmg = player.effectiveAtk * (0.5f + level * 0.1f)
+            val dmg = player.effectiveAtk * (0.7f + level * 0.15f)
             for (e in world.enemies) {
                 if (!e.alive) continue
                 if (player.distTo(e) < range + e.radius) {
@@ -228,8 +232,6 @@ class AuraSkill : Skill(
                     if (killed) world.onEnemyKilled(e)
                 }
             }
-            world.auraRadius = range
-            world.auraActive = true
             tickTimer = 0.5f
         }
     }
