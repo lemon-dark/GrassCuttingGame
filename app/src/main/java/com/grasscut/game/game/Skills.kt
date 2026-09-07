@@ -80,7 +80,7 @@ class BasicAttackSkill : Skill(
                         dx / dist * speed, dy / dist * speed,
                         player.effectiveAtk * 1.0f,
                         pierce = 0, lifetime = 2f,
-                        color = 0xFF81D4FA.toInt(), size = 5f
+                        color = 0xFF81D4FA.toInt(), size = 10f
                     ))
                 }
             }
@@ -118,7 +118,7 @@ class KnifeSkill : Skill(
                         player.x, player.y,
                         dx / dist * speed, dy / dist * speed,
                         dmg, pierce = 3, lifetime = 2.5f,
-                        color = 0xFFFAFAFA.toInt(), size = 7f,
+                        color = 0xFFFAFAFA.toInt(), size = 14f,
                         bulletType = "knife"
                     ))
                 }
@@ -153,12 +153,12 @@ class FireballSkill : Skill(
                 if (dist > 1) {
                     val speed = 350f
                     val dmg = player.effectiveAtk * (2.5f + level * 0.3f)
-                    val radius = 70f + level * 10f
+                    val radius = 140f + level * 20f
                     val fb = Bullet(
                         player.x, player.y,
                         dx / dist * speed, dy / dist * speed,
                         dmg, pierce = 0, lifetime = 3f,
-                        color = 0xFFFF5722.toInt(), size = 12f,
+                        color = 0xFFFF5722.toInt(), size = 24f,
                         bulletType = "fireball"
                     )
                     fb.explosionRadius = radius
@@ -217,7 +217,7 @@ class AuraSkill : Skill(
     override fun update(player: Player, world: GameWorld, dt: Float) {
         if (level == 0) return
         // 每帧都显示光环（不再闪烁）
-        val range = 100f + level * 15f
+        val range = 200f + level * 30f
         world.auraRadius = range
         world.auraActive = true
 

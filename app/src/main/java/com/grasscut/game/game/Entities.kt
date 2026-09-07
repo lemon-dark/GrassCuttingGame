@@ -89,19 +89,19 @@ class Enemy(x: Float, y: Float, val type: EnemyType, gameTime: Float) : Entity(x
         val timeScale = 1f + gameTime / 320f
         when (type) {
             EnemyType.NORMAL -> {
-                radius = 22f; hp = 12f * timeScale; damage = 5f; speed = 70f; xpValue = 1
+                radius = 44f; hp = 12f * timeScale; damage = 5f; speed = 70f; xpValue = 1
             }
             EnemyType.FAST -> {
-                radius = 18f; hp = 7f * timeScale; damage = 3f; speed = 140f; xpValue = 1
+                radius = 36f; hp = 7f * timeScale; damage = 3f; speed = 140f; xpValue = 1
             }
             EnemyType.TANK -> {
-                radius = 32f; hp = 45f * timeScale; damage = 12f; speed = 45f; xpValue = 3
+                radius = 64f; hp = 45f * timeScale; damage = 12f; speed = 45f; xpValue = 3
             }
             EnemyType.ELITE -> {
-                radius = 38f; hp = 120f * timeScale; damage = 18f; speed = 60f; xpValue = 10
+                radius = 76f; hp = 120f * timeScale; damage = 18f; speed = 60f; xpValue = 10
             }
             EnemyType.BOSS -> {
-                radius = 70f; hp = 900f * timeScale; damage = 30f; speed = 50f; xpValue = 100
+                radius = 140f; hp = 900f * timeScale; damage = 30f; speed = 50f; xpValue = 100
             }
         }
         maxHp = hp
@@ -136,7 +136,7 @@ class Bullet(
 }
 
 // ============ 经验宝石 ============
-class XpGem(x: Float, y: Float, var value: Int) : Entity(x, y, 7f) {
+class XpGem(x: Float, y: Float, var value: Int) : Entity(x, y, 14f) {
     var attracted = false
     var speed = 0f
     var magnetTimer = 0f

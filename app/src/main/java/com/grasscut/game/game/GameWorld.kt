@@ -179,7 +179,7 @@ class GameWorld {
                     addFloatingText(e.x, e.y - e.radius - 5,
                         dmg.toInt().toString(),
                         if (isCrit) GameConfig.COLOR_DAMAGE_CRIT else GameConfig.COLOR_DAMAGE,
-                        size = if (isCrit) 32f else 24f)
+                        size = if (isCrit) 64f else 48f)
                     if (killed) onEnemyKilled(e)
 
                     // 火球爆炸
@@ -448,7 +448,7 @@ class GameWorld {
             if (random.nextFloat() < player.critChance) dmg *= player.critDamage
             val killed = current.takeDamage(dmg)
             addFloatingText(current.x, current.y - current.radius - 5,
-                dmg.toInt().toString(), 0xFFFFEB3B.toInt(), size = 28f)
+                dmg.toInt().toString(), 0xFFFFEB3B.toInt(), size = 56f)
             if (killed) onEnemyKilled(current)
 
             prevX = current.x
