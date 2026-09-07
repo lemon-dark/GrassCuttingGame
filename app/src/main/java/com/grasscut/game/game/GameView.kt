@@ -61,6 +61,14 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private var glowRed: Bitmap? = null
     private var glowPurple: Bitmap? = null
 
+    // 角色贴图
+    private var playerBmp: Bitmap? = null
+    private var enemyNormalBmp: Bitmap? = null
+    private var enemyFastBmp: Bitmap? = null
+    private var enemyTankBmp: Bitmap? = null
+    private var enemyEliteBmp: Bitmap? = null
+    private var enemyBossBmp: Bitmap? = null
+
     // 设置界面状态
     private var inSettings = false
     private val settingItems = listOf(
@@ -84,6 +92,13 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             glowWhite = BitmapFactory.decodeStream(context.assets.open("glow_white.png"))
             glowRed = BitmapFactory.decodeStream(context.assets.open("glow_red.png"))
             glowPurple = BitmapFactory.decodeStream(context.assets.open("glow_purple.png"))
+            // 角色贴图
+            playerBmp = BitmapFactory.decodeStream(context.assets.open("player.png"))
+            enemyNormalBmp = BitmapFactory.decodeStream(context.assets.open("enemy_normal.png"))
+            enemyFastBmp = BitmapFactory.decodeStream(context.assets.open("enemy_fast.png"))
+            enemyTankBmp = BitmapFactory.decodeStream(context.assets.open("enemy_tank.png"))
+            enemyEliteBmp = BitmapFactory.decodeStream(context.assets.open("enemy_elite.png"))
+            enemyBossBmp = BitmapFactory.decodeStream(context.assets.open("enemy_boss.png"))
         } catch (e: Exception) {
             // 贴图加载失败，回退几何图形
         }
@@ -99,6 +114,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         paint.alpha = alpha
         val src = Rect(0, 0, bmp.width, bmp.height)
         val dst = RectF(x - radius, y - radius, x + radius, y + radius)
+        canvas.drawBitmap(bmp, src, dst, paint)
+        paint.alpha = 255
+    }
+
+    // 角色贴图渲染（保持宽高比，居中）
+    private fun drawCharacter(canvas: Canvas, bmp: Bitmap?, x: Float, y: Float, radius: Float, alpha: Int = 255) {
+        if (bmp == null) {
+            paint.alpha = alpha
+            paint.color = 0xFF81C784.toInt()
+            canvas.drawCircle(x, y, radius, paint)
+            paint.alpha = 255
+            return
+        }
+        val size = radius * 2.3f
+        val ratio = bmp.height.toFloat() / bmp.width.toFloat()
+        val w = size
+        val h = size * ratio
+        val src = Rect(0, 0, bmp.width, bmp.height)
+        val dst = RectF(x - w / 2, y - h / 2, x + w / 2, y + h / 2)
+        paint.alpha = alpha
         canvas.drawBitmap(bmp, src, dst, paint)
         paint.alpha = 255
     }
@@ -302,20 +337,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun drawEnemies(canvas: Canvas) {
         for (e in world.enemies) {
             if (!e.alive) continue
-            val color = GameConfig.ENEMY_COLORS[e.type.name.lowercase()] ?: 0xFF66BB6A.toInt()
-
-            // 身体
-            paint.color = if (e.hitFlash > 0) Color.WHITE else color
-            if (e.type == EnemyType.BOSS) {
-                canvas.drawCircle(e.x, e.y, e.radius, paint)
-                paint.color = 0xFF000000.toInt()
-                paint.alpha = 100
-                canvas.drawCircle(e.x, e.y, e.radius * 0.6f, paint)
-                paint.alpha = 255
-            } else {
-                val rect = RectF(e.x - e.radius, e.y - e.radius, e.x + e.radius, e.y + e.radius)
-                canvas.drawRoundRect(rect, e.radius * 0.3f, e.radius * 0.3f, paint)
+            val bmp = when (e.type) {
+                EnemyType.NORMAL -> enemyNormalBmp
+                EnemyType.FAST -> enemyFastBmp
+                EnemyType.TANK -> enemyTankBmp
+                EnemyType.ELITE -> enemyEliteBmp
+                EnemyType.BOSS -> enemyBossBmp
             }
+            val alpha = if (e.hitFlash > 0) 180 else 255
+            drawCharacter(canvas, bmp, e.x, e.y, e.radius, alpha)
 
             // 血条
             if (e.hp < e.maxHp) {
@@ -336,20 +366,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     // ============ 玩家 ============
     private fun drawPlayer(canvas: Canvas) {
         val p = world.player
-        // 无敌闪烁
-        if (p.invincibleTimer > 0 && (p.invincibleTimer * 20).toInt() % 2 == 0) {
-            paint.alpha = 100
-        }
-        // 外圈
-        paint.color = GameConfig.COLOR_PLAYER_DARK
-        canvas.drawCircle(p.x, p.y, p.radius + 3, paint)
-        // 身体
-        paint.color = GameConfig.COLOR_PLAYER
-        canvas.drawCircle(p.x, p.y, p.radius, paint)
-        // 内圈
-        paint.color = 0xFFB3E5FC.toInt()
-        canvas.drawCircle(p.x, p.y, p.radius * 0.5f, paint)
-        paint.alpha = 255
+        val alpha = if (p.invincibleTimer > 0 && (p.invincibleTimer * 20).toInt() % 2 == 0) 100 else 255
+        drawCharacter(canvas, playerBmp, p.x, p.y, p.radius, alpha)
     }
 
     // ============ 子弹 ============
@@ -606,10 +624,10 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                     textPaint.isFakeBoldText = true
                     canvas.drawText(option.name, cardX + cardW / 2, cardY + h * 0.16f, textPaint)
                     textPaint.isFakeBoldText = false
-                    textPaint.textSize = h * 0.017f
+                    textPaint.textSize = h * 0.015f
                     textPaint.color = 0xFFBDBDBD.toInt()
                     val desc = if (option.level == 0) option.description else option.upgradeDescription()
-                    drawTextWrapped(canvas, desc, cardX + cardW / 2, cardY + h * 0.2f, cardW - w * 0.03f, h * 0.017f)
+                    drawTextWrapped(canvas, desc, cardX + cardW / 2, cardY + h * 0.19f, cardW - w * 0.04f, h * 0.015f, 3)
                     if (option.level > 0) {
                         textPaint.color = 0xFFFFEB3B.toInt()
                         textPaint.textSize = h * 0.015f
@@ -633,18 +651,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         }
     }
 
-    private fun drawTextWrapped(canvas: Canvas, text: String, cx: Float, y: Float, maxWidth: Float, textSize: Float) {
+    private fun drawTextWrapped(canvas: Canvas, text: String, cx: Float, y: Float, maxWidth: Float, textSize: Float, maxLines: Int = 3) {
         textPaint.textSize = textSize
         textPaint.textAlign = Paint.Align.CENTER
         val words = text.split(" ")
         var line = ""
         var cy = y
+        var lines = 0
         for (word in words) {
             val test = if (line.isEmpty()) word else "$line $word"
             if (textPaint.measureText(test) > maxWidth && line.isNotEmpty()) {
+                if (lines >= maxLines - 1) {
+                    // 最后一行，加省略号
+                    val ellipsis = "$line…"
+                    canvas.drawText(ellipsis, cx, cy, textPaint)
+                    return
+                }
                 canvas.drawText(line, cx, cy, textPaint)
                 line = word
                 cy += textSize + 4
+                lines++
             } else {
                 line = test
             }
