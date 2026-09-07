@@ -42,6 +42,12 @@ class Player(x: Float, y: Float) : Entity(x, y, GameConfig.PLAYER_RADIUS) {
     var kills = 0
     var invincibleTimer = 0f
 
+    // 帧动画
+    var animFrame = 0
+    var animTimer = 0f
+    var isMoving = false
+    var facingRight = true
+
     val skills = mutableListOf<Skill>()
 
     fun gainXp(amount: Int): Boolean {
@@ -83,6 +89,11 @@ class Enemy(x: Float, y: Float, val type: EnemyType, gameTime: Float) : Entity(x
     var xpValue: Int
     var hitFlash = 0f
     var attackCooldown = 0f
+
+    // 帧动画
+    var animFrame = 0
+    var animTimer = 0f
+    var facingRight = true
 
     init {
         // 随时间增强（进一步放缓，避免血量膨胀过快）

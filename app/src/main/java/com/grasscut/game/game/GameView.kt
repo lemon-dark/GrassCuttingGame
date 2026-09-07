@@ -62,12 +62,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private var glowPurple: Bitmap? = null
 
     // 角色贴图
-    private var playerBmp: Bitmap? = null
-    private var enemyNormalBmp: Bitmap? = null
-    private var enemyFastBmp: Bitmap? = null
-    private var enemyTankBmp: Bitmap? = null
-    private var enemyEliteBmp: Bitmap? = null
-    private var enemyBossBmp: Bitmap? = null
+    private var playerSheetBmp: Bitmap? = null
+    private var enemyNormalSheetBmp: Bitmap? = null
+    private var enemyFastSheetBmp: Bitmap? = null
+    private var enemyTankSheetBmp: Bitmap? = null
+    private var enemyEliteSheetBmp: Bitmap? = null
+    private var enemyBossSheetBmp: Bitmap? = null
 
     // 物品和子弹贴图
     private var xpGemBmp: Bitmap? = null
@@ -99,12 +99,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             glowRed = BitmapFactory.decodeStream(context.assets.open("glow_red.png"))
             glowPurple = BitmapFactory.decodeStream(context.assets.open("glow_purple.png"))
             // 角色贴图
-            playerBmp = BitmapFactory.decodeStream(context.assets.open("player.png"))
-            enemyNormalBmp = BitmapFactory.decodeStream(context.assets.open("enemy_normal.png"))
-            enemyFastBmp = BitmapFactory.decodeStream(context.assets.open("enemy_fast.png"))
-            enemyTankBmp = BitmapFactory.decodeStream(context.assets.open("enemy_tank.png"))
-            enemyEliteBmp = BitmapFactory.decodeStream(context.assets.open("enemy_elite.png"))
-            enemyBossBmp = BitmapFactory.decodeStream(context.assets.open("enemy_boss.png"))
+            playerSheetBmp = BitmapFactory.decodeStream(context.assets.open("player_sheet.png"))
+            enemyNormalSheetBmp = BitmapFactory.decodeStream(context.assets.open("enemy_normal_sheet.png"))
+            enemyFastSheetBmp = BitmapFactory.decodeStream(context.assets.open("enemy_fast_sheet.png"))
+            enemyTankSheetBmp = BitmapFactory.decodeStream(context.assets.open("enemy_tank_sheet.png"))
+            enemyEliteSheetBmp = BitmapFactory.decodeStream(context.assets.open("enemy_elite_sheet.png"))
+            enemyBossSheetBmp = BitmapFactory.decodeStream(context.assets.open("enemy_boss_sheet.png"))
             // 物品和子弹贴图
             xpGemBmp = BitmapFactory.decodeStream(context.assets.open("xp_gem.png"))
             bulletEnergyBmp = BitmapFactory.decodeStream(context.assets.open("bullet_energy.png"))
@@ -130,22 +130,32 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     }
 
     // 角色贴图渲染（保持宽高比，居中）
-    private fun drawCharacter(canvas: Canvas, bmp: Bitmap?, x: Float, y: Float, radius: Float, alpha: Int = 255) {
-        if (bmp == null) {
+    private fun drawCharacter(canvas: Canvas, sheet: Bitmap?, x: Float, y: Float, radius: Float, frameIndex: Int = 0, flipX: Boolean = false, alpha: Int = 255) {
+        if (sheet == null) {
             paint.alpha = alpha
             paint.color = 0xFF81C784.toInt()
             canvas.drawCircle(x, y, radius, paint)
             paint.alpha = 255
             return
         }
+        // sprite sheet 是4帧横排
+        val frameWidth = sheet.width / 4
+        val frame = frameIndex.coerceIn(0, 3)
         val size = radius * 2.3f
-        val ratio = bmp.height.toFloat() / bmp.width.toFloat()
+        val ratio = sheet.height.toFloat() / frameWidth.toFloat()
         val w = size
         val h = size * ratio
-        val src = Rect(0, 0, bmp.width, bmp.height)
+        val src = Rect(frame * frameWidth, 0, (frame + 1) * frameWidth, sheet.height)
         val dst = RectF(x - w / 2, y - h / 2, x + w / 2, y + h / 2)
         paint.alpha = alpha
-        canvas.drawBitmap(bmp, src, dst, paint)
+        if (flipX) {
+            canvas.save()
+            canvas.scale(-1f, 1f, x, y)
+            canvas.drawBitmap(sheet, src, dst, paint)
+            canvas.restore()
+        } else {
+            canvas.drawBitmap(sheet, src, dst, paint)
+        }
         paint.alpha = 255
     }
 
@@ -177,7 +187,19 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun playSound(name: String) {
         if (!soundReady || !Settings.soundEnabled) return
         soundIds[name]?.let { id ->
-            val vol = Settings.soundVolume
+            // 不同音效不同音量倍率，避免拾取等高频音效太吵
+            val volMultiplier = when (name) {
+                "pickup" -> 0.25f
+                "shoot" -> 0.6f
+                "hit" -> 0.5f
+                "hurt" -> 0.7f
+                "levelup" -> 0.8f
+                "death" -> 0.9f
+                "victory" -> 0.9f
+                "warning" -> 0.8f
+                else -> 0.7f
+            }
+            val vol = Settings.soundVolume * volMultiplier
             soundPool.play(id, vol, vol, 1, 0, 1f)
         }
     }
@@ -353,15 +375,15 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun drawEnemies(canvas: Canvas) {
         for (e in world.enemies) {
             if (!e.alive) continue
-            val bmp = when (e.type) {
-                EnemyType.NORMAL -> enemyNormalBmp
-                EnemyType.FAST -> enemyFastBmp
-                EnemyType.TANK -> enemyTankBmp
-                EnemyType.ELITE -> enemyEliteBmp
-                EnemyType.BOSS -> enemyBossBmp
+            val sheet = when (e.type) {
+                EnemyType.NORMAL -> enemyNormalSheetBmp
+                EnemyType.FAST -> enemyFastSheetBmp
+                EnemyType.TANK -> enemyTankSheetBmp
+                EnemyType.ELITE -> enemyEliteSheetBmp
+                EnemyType.BOSS -> enemyBossSheetBmp
             }
             val alpha = if (e.hitFlash > 0) 180 else 255
-            drawCharacter(canvas, bmp, e.x, e.y, e.radius, alpha)
+            drawCharacter(canvas, sheet, e.x, e.y, e.radius, e.animFrame, e.facingRight, alpha)
 
             // 血条
             if (e.hp < e.maxHp) {
@@ -383,7 +405,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun drawPlayer(canvas: Canvas) {
         val p = world.player
         val alpha = if (p.invincibleTimer > 0 && (p.invincibleTimer * 20).toInt() % 2 == 0) 100 else 255
-        drawCharacter(canvas, playerBmp, p.x, p.y, p.radius, alpha)
+        drawCharacter(canvas, playerSheetBmp, p.x, p.y, p.radius, p.animFrame, p.facingRight, alpha)
     }
 
     // ============ 子弹 ============

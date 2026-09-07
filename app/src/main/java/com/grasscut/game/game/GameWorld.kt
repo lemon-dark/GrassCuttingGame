@@ -123,11 +123,25 @@ class GameWorld {
         if (player.invincibleTimer > 0) player.invincibleTimer -= dt
 
         val len = hypot(inputX, inputY)
+        player.isMoving = len > 0.1f
         if (len > 0.1f) {
             val nx = inputX / len
             val ny = inputY / len
             player.x += nx * player.effectiveMoveSpeed * dt
             player.y += ny * player.effectiveMoveSpeed * dt
+            // 朝向：水平移动方向决定翻转
+            if (nx > 0.1f) player.facingRight = true
+            else if (nx < -0.1f) player.facingRight = false
+            // 行走动画：每0.15秒切换一帧
+            player.animTimer += dt
+            if (player.animTimer >= 0.15f) {
+                player.animTimer = 0f
+                player.animFrame = (player.animFrame + 1) % 4
+            }
+        } else {
+            // 站立时回到第0帧（呼吸感）
+            player.animFrame = 0
+            player.animTimer = 0f
         }
         // 地图边界
         player.x = player.x.coerceIn(player.radius, GameConfig.MAP_WIDTH - player.radius)
@@ -239,6 +253,20 @@ class GameWorld {
             if (dist > 1) {
                 e.x += (dx / dist) * e.speed * dt
                 e.y += (dy / dist) * e.speed * dt
+                // 朝向
+                if (dx > 0) e.facingRight = true else e.facingRight = false
+                // 行走动画：速度越快帧切换越快
+                val animInterval = when (e.type) {
+                    EnemyType.FAST -> 0.1f
+                    EnemyType.TANK -> 0.25f
+                    EnemyType.BOSS -> 0.22f
+                    else -> 0.16f
+                }
+                e.animTimer += dt
+                if (e.animTimer >= animInterval) {
+                    e.animTimer = 0f
+                    e.animFrame = (e.animFrame + 1) % 4
+                }
             }
 
             // 攻击玩家
