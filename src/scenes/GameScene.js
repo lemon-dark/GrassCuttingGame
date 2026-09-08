@@ -522,13 +522,17 @@ export class GameScene extends Phaser.Scene {
                         this.pickupSoundTimer = 0.08;
                     }
                     const leveledUp = this.player.gainXp(gem.value);
-                    if (leveledUp) this.showLevelUp();
+                    if (leveledUp) {
+                        this.showLevelUp();
+                        break; // 关键修复：升级后立即停止循环，避免多次触发升级UI
+                    }
                 }
             }
             
             // 更新道具
             for (const item of this.items) {
                 item.update(dt, this.player);
+                if (this.gameState !== 'playing') break; // 升级后停止循环
             }
             
             // 宝箱拾取检测
@@ -537,6 +541,7 @@ export class GameScene extends Phaser.Scene {
                 const dist = Math.hypot(chest.x - this.player.x, chest.y - this.player.y);
                 if (dist < 50) {
                     this.openChest(chest);
+                    break; // 打开宝箱后停止循环，避免多次触发升级UI
                 }
             }
             this.chests = this.chests.filter(c => c.alive);
@@ -1070,6 +1075,9 @@ export class GameScene extends Phaser.Scene {
     showLevelUpUI() {
         const w = this.scale.width;
         const h = this.scale.height;
+        
+        // 关键修复：先清理之前的升级UI，避免重复创建导致内存泄漏和卡死
+        this.closeLevelUpUI();
         
         this.levelUpBg = this.add.rectangle(w / 2, h / 2, w, h, 0x000000, 0.7).setScrollFactor(0).setDepth(3000);
         this.add.text(w / 2, h * 0.15, '升级!', { fontSize: '48px', color: '#FFD700', fontWeight: 'bold' }).setScrollFactor(0).setDepth(3001).setOrigin(0.5);
