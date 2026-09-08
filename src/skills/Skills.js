@@ -45,7 +45,7 @@ export class BasicAttackSkill extends Skill {
     constructor() {
         super('能量弹', 8);
         this.baseDamage = 10;
-        this.baseCooldown = 1.0;
+        this.baseCooldown = 1.5; // 从1.0降低到1.5，减少发射频率
         this.bulletSpeed = 400;
     }
     

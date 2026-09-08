@@ -577,15 +577,17 @@ export class GameScene extends Phaser.Scene {
                         const skillName = bullet.skillName || '普通攻击';
                         this.damageStats.bySkill[skillName] = (this.damageStats.bySkill[skillName] || 0) + dmg;
                         
-                        // 击退（集成击退技能和不同怪物类型的击退系数）
-                        const knockbackSkill = this.player.getSkill('击退强化');
-                        const knockbackMultiplier = knockbackSkill ? knockbackSkill.knockbackMultiplier : 1;
-                        const enemyKnockbackFactor = KnockbackSkill.getEnemyKnockbackFactor(enemy.type);
-                        const baseKnockback = isCrit ? 300 : 150;
-                        const finalKnockback = baseKnockback * knockbackMultiplier * enemyKnockbackFactor;
-                        const angle = Math.atan2(bullet.vy, bullet.vx);
-                        enemy.knockbackX += Math.cos(angle) * finalKnockback;
-                        enemy.knockbackY += Math.sin(angle) * finalKnockback;
+                        // 击退（只有技能子弹才有击退，普通攻击energy不带击退）
+                        if (bullet.type !== 'energy') {
+                            const knockbackSkill = this.player.getSkill('击退强化');
+                            const knockbackMultiplier = knockbackSkill ? knockbackSkill.knockbackMultiplier : 1;
+                            const enemyKnockbackFactor = KnockbackSkill.getEnemyKnockbackFactor(enemy.type);
+                            const baseKnockback = isCrit ? 300 : 150;
+                            const finalKnockback = baseKnockback * knockbackMultiplier * enemyKnockbackFactor;
+                            const angle = Math.atan2(bullet.vy, bullet.vx);
+                            enemy.knockbackX += Math.cos(angle) * finalKnockback;
+                            enemy.knockbackY += Math.sin(angle) * finalKnockback;
+                        }
                         
                         // 吸血（生命汲取技能）
                         const lifestealSkill = this.player.getSkill('生命汲取');
