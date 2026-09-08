@@ -1500,27 +1500,35 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
         val startY = drawSubPageHeader(canvas, "怪物图鉴")
         val monsters = listOf(
-            Triple("普通怪", "基础敌人，速度中等", "蓝灰色"),
-            Triple("快速怪", "移动速度快，血量低", "亮黄色"),
-            Triple("坦克怪", "血量高，移动慢", "红色"),
-            Triple("精英怪", "综合属性强，掉大量经验", "紫色"),
-            Triple("Boss", "最终Boss，超高血量", "橙红色")
+            Triple("普通怪", "基础敌人，速度中等", EnemyType.NORMAL),
+            Triple("快速怪", "移动速度快，血量低", EnemyType.FAST),
+            Triple("坦克怪", "血量高，移动慢", EnemyType.TANK),
+            Triple("精英怪", "综合属性强，掉大量经验", EnemyType.ELITE),
+            Triple("Boss", "最终Boss，超高血量", EnemyType.BOSS)
         )
-        val cardW = w * 0.9f; val cardH = h * 0.11f; val gap = h * 0.015f
+        val cardW = w * 0.9f; val cardH = h * 0.13f; val gap = h * 0.015f
         for ((i, m) in monsters.withIndex()) {
             val cy = startY + h * 0.02f + i * (cardH + gap)
             val cx = (w - cardW) / 2
             paint.color = 0xFF1A1A2E.toInt()
             canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 10f, 10f, paint)
+            // 怪物sprite
+            val sheet = when (m.third) {
+                EnemyType.NORMAL -> enemyNormalSheetBmp
+                EnemyType.FAST -> enemyFastSheetBmp
+                EnemyType.TANK -> enemyTankSheetBmp
+                EnemyType.ELITE -> enemyEliteSheetBmp
+                EnemyType.BOSS -> enemyBossSheetBmp
+            }
+            val spriteSize = cardH * 0.7f
+            drawCharacter(canvas, sheet, cx + w * 0.08f, cy + cardH / 2, spriteSize / 2, 0, true, 255)
             textPaint.color = Color.WHITE
             textPaint.textSize = h * 0.026f
             textPaint.textAlign = Paint.Align.LEFT
-            canvas.drawText(m.first, cx + w * 0.03f, cy + cardH * 0.4f, textPaint)
+            canvas.drawText(m.first, cx + w * 0.18f, cy + cardH * 0.4f, textPaint)
             textPaint.textSize = h * 0.018f
             textPaint.color = 0xFFBDBDBD.toInt()
-            canvas.drawText(m.second, cx + w * 0.03f, cy + cardH * 0.72f, textPaint)
-            textPaint.color = 0xFF9E9E9E.toInt()
-            canvas.drawText("颜色: ${m.third}", cx + cardW - w * 0.25f, cy + cardH * 0.5f, textPaint)
+            canvas.drawText(m.second, cx + w * 0.18f, cy + cardH * 0.72f, textPaint)
         }
     }
 
@@ -1529,28 +1537,30 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
         val startY = drawSubPageHeader(canvas, "武器图鉴")
         val weapons = listOf(
-            Triple("能量弹", "基础攻击，自动发射", "三联能量炮"),
-            Triple("飞刀", "环绕+扇形穿透", "万剑归宗"),
-            Triple("火球", "范围爆炸伤害", "陨石雨"),
-            Triple("闪电", "跳跃连锁攻击", "雷神之怒"),
-            Triple("灼烧光环", "持续范围伤害", "太阳风暴"),
-            Triple("追踪导弹", "自动追踪+小爆炸", "全屏导弹雨"),
-            Triple("冰锥术", "命中减速敌人", "绝对零度"),
-            Triple("旋风斩", "环绕风刃持续伤害", "风暴领主")
+            Quad("能量弹", "基础攻击，自动发射", "三联能量炮", BasicAttackSkill()),
+            Quad("飞刀", "环绕+扇形穿透", "万剑归宗", KnifeSkill()),
+            Quad("火球", "范围爆炸伤害", "陨石雨", FireballSkill()),
+            Quad("闪电", "跳跃连锁攻击", "雷神之怒", LightningSkill()),
+            Quad("灼烧光环", "持续范围伤害", "太阳风暴", AuraSkill()),
+            Quad("追踪导弹", "自动追踪+小爆炸", "全屏导弹雨", MissileSkill()),
+            Quad("冰锥术", "命中减速敌人", "绝对零度", IceSpikeSkill()),
+            Quad("旋风斩", "环绕风刃持续伤害", "风暴领主", WhirlwindSkill())
         )
-        val cardW = w * 0.92f; val cardH = h * 0.085f; val gap = h * 0.01f
+        val cardW = w * 0.92f; val cardH = h * 0.09f; val gap = h * 0.01f
         for ((i, wp) in weapons.withIndex()) {
             val cy = startY + h * 0.015f + i * (cardH + gap)
             val cx = (w - cardW) / 2
             paint.color = 0xFF1A1A2E.toInt()
             canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 8f, 8f, paint)
+            // 技能图标
+            drawSkillIcon(canvas, wp.fourth, cx + w * 0.06f, cy + cardH / 2, cardH * 0.35f)
             textPaint.color = 0xFF4FC3F7.toInt()
             textPaint.textSize = h * 0.022f
             textPaint.textAlign = Paint.Align.LEFT
-            canvas.drawText(wp.first, cx + w * 0.025f, cy + cardH * 0.42f, textPaint)
+            canvas.drawText(wp.first, cx + w * 0.13f, cy + cardH * 0.42f, textPaint)
             textPaint.textSize = h * 0.016f
             textPaint.color = 0xFFBDBDBD.toInt()
-            canvas.drawText(wp.second, cx + w * 0.025f, cy + cardH * 0.75f, textPaint)
+            canvas.drawText(wp.second, cx + w * 0.13f, cy + cardH * 0.75f, textPaint)
             textPaint.color = 0xFFFFD700.toInt()
             textPaint.textAlign = Paint.Align.RIGHT
             canvas.drawText("超武: ${wp.third}", cx + cardW - w * 0.025f, cy + cardH * 0.55f, textPaint)
@@ -1562,28 +1572,35 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
         val startY = drawSubPageHeader(canvas, "技能图鉴")
         val skills = listOf(
-            Triple("攻击力", "攻击力+5", "可叠加"),
-            Triple("攻击速度", "攻击速度+0.2", "可叠加"),
-            Triple("移动速度", "移动速度+30", "可叠加"),
-            Triple("最大生命", "最大生命+20并回满", "可叠加"),
-            Triple("拾取范围", "拾取范围+40", "可叠加"),
-            Triple("暴击率", "暴击率+5%", "可叠加"),
-            Triple("暴击伤害", "暴击伤害+30%", "可叠加"),
-            Triple("生命恢复", "每秒恢复2生命", "可叠加")
+            Quad("攻击力", "攻击力+5", "可叠加", 0xFFEF5350.toInt()),
+            Quad("攻击速度", "攻击速度+0.2", "可叠加", 0xFFFFAB40.toInt()),
+            Quad("移动速度", "移动速度+30", "可叠加", 0xFF4FC3F7.toInt()),
+            Quad("最大生命", "最大生命+20并回满", "可叠加", 0xFF66BB6A.toInt()),
+            Quad("拾取范围", "拾取范围+40", "可叠加", 0xFF00E676.toInt()),
+            Quad("暴击率", "暴击率+5%", "可叠加", 0xFFAB47BC.toInt()),
+            Quad("暴击伤害", "暴击伤害+30%", "可叠加", 0xFFFF7043.toInt()),
+            Quad("生命恢复", "每秒恢复2生命", "可叠加", 0xFF81C784.toInt())
         )
-        val cardW = w * 0.92f; val cardH = h * 0.08f; val gap = h * 0.012f
+        val cardW = w * 0.92f; val cardH = h * 0.085f; val gap = h * 0.012f
         for ((i, sk) in skills.withIndex()) {
             val cy = startY + h * 0.02f + i * (cardH + gap)
             val cx = (w - cardW) / 2
             paint.color = 0xFF1A1A2E.toInt()
             canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 8f, 8f, paint)
+            // 彩色图标
+            val iconR = cardH * 0.3f
+            val iconGrad = android.graphics.RadialGradient(cx + w * 0.06f, cy + cardH / 2, iconR,
+                sk.fourth, darkerColor(sk.fourth), android.graphics.Shader.TileMode.CLAMP)
+            paint.shader = iconGrad
+            canvas.drawCircle(cx + w * 0.06f, cy + cardH / 2, iconR, paint)
+            paint.shader = null
             textPaint.color = 0xFF69F0AE.toInt()
             textPaint.textSize = h * 0.022f
             textPaint.textAlign = Paint.Align.LEFT
-            canvas.drawText(sk.first, cx + w * 0.025f, cy + cardH * 0.45f, textPaint)
+            canvas.drawText(sk.first, cx + w * 0.13f, cy + cardH * 0.45f, textPaint)
             textPaint.textSize = h * 0.017f
             textPaint.color = 0xFFBDBDBD.toInt()
-            canvas.drawText(sk.second, cx + w * 0.025f, cy + cardH * 0.78f, textPaint)
+            canvas.drawText(sk.second, cx + w * 0.13f, cy + cardH * 0.78f, textPaint)
             textPaint.color = 0xFF9E9E9E.toInt()
             textPaint.textAlign = Paint.Align.RIGHT
             canvas.drawText(sk.third, cx + cardW - w * 0.025f, cy + cardH * 0.55f, textPaint)

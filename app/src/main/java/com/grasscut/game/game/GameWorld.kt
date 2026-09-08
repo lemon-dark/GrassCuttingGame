@@ -358,9 +358,7 @@ class GameWorld {
                         isCrit = true
                     }
                     val killed = e.takeDamage(dmg)
-                    // 命中停顿
-                    triggerHitstop(if (isCrit) 0.05f else 0.025f)
-                    // 击退
+                    // 击退（小怪/精英不停顿，只击退）
                     val kbStrength = if (isCrit) 350f else 200f
                     val bDist = hypot(b.vx, b.vy)
                     if (bDist > 1) {
@@ -562,6 +560,7 @@ class GameWorld {
                 val leveledUp = player.gainXp(gem.value)
                 if (leveledUp) {
                     generateLevelUpOptions()
+                    rerollCount = 0  // 每次升级重置刷新次数
                     state = GameState.LEVEL_UP
                     playSound("levelup")
                     playVoice("voice_levelup")
@@ -722,6 +721,13 @@ class GameWorld {
             else -> {
                 if (random.nextFloat() < 0.01f) playVoice("voice_attack")
             }
+        }
+        // Boss死亡慢动作
+        if (e.type == EnemyType.BOSS) {
+            timeScale = 0.3f
+            slowMoDuration = 1.5f
+            triggerFlash(0xFFFFD700.toInt(), 0.3f)
+            triggerShake(15f, 0.5f)
         }
         // 掉经验宝石
         val gemCount = when (e.type) {
