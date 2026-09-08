@@ -11,6 +11,7 @@ import { gameState } from '../state/GameState.js';
 import { soundManager } from '../audio/SoundManager.js';
 import { BackgroundImages } from '../assets/backgrounds.js';
 import { BackgroundGenerator } from '../utils/BackgroundGenerator.js';
+import { GameBackground } from '../assets/game_background.js';
 import { SpriteLoader } from '../utils/SpriteLoader.js';
 import { ParticleTextures } from '../assets/particleTextures.js';
 
@@ -20,6 +21,7 @@ export class GameScene extends Phaser.Scene {
     }
     
     create() {
+        console.log('GameScene.create 被调用');
         soundManager.init();
         soundManager.updateSettings(gameState.data.settings);
         
@@ -231,10 +233,23 @@ export class GameScene extends Phaser.Scene {
     }
     
     loadLevelBackground() {
-        const levelId = gameState.data.currentLevel;
-        // 使用代码生成的背景（更清晰、更轻量）
-        const bgKey = BackgroundGenerator.generate(this, levelId);
+        // 使用用户上传的草原森林背景图
+        const bgKey = 'game_background_custom';
         
+        // 加载背景图（如果还没加载）
+        if (!this.textures.exists(bgKey)) {
+            const img = new Image();
+            img.onload = () => {
+                this.textures.addImage(bgKey, img);
+                this.createBackgroundImage(bgKey);
+            };
+            img.src = GameBackground;
+        } else {
+            this.createBackgroundImage(bgKey);
+        }
+    }
+    
+    createBackgroundImage(bgKey) {
         // 用一整张 image 拉伸覆盖整个地图
         if (this.backgroundImage) this.backgroundImage.destroy();
         this.backgroundImage = this.add.image(
@@ -243,8 +258,8 @@ export class GameScene extends Phaser.Scene {
             bgKey
         ).setDisplaySize(GameConfig.MAP_WIDTH, GameConfig.MAP_HEIGHT)
          .setDepth(-10)
-         .setAlpha(0.9);
-        console.log('代码背景加载成功:', bgKey);
+         .setAlpha(1.0);
+        console.log('自定义背景图加载成功:', bgKey);
     }
     
     drawBackground() {

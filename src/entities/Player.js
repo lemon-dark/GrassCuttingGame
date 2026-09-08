@@ -36,13 +36,12 @@ export class Player {
         // 技能列表（初始只有能量弹）
         this.skills = [new BasicAttackSkill()];
         
-        // 创建带动画的角色 sprite（动画已在 SpriteLoader.loadAll 中创建好，12fps）
-        this.sprite = SpriteLoader.createAnimatedSprite(scene, x, y, 'player');
-        this.sprite.setDisplaySize(this.radius * 3, this.radius * 3 * (170/212));
+        // 创建玩家角色卡通sprite（支持三个方向动画）
+        this.sprite = SpriteLoader.createPlayerCartoonSprite(scene, x, y);
+        this.sprite.setDisplaySize(this.radius * 1.5, this.radius * 1.5 * (68/56));
         this.sprite.setDepth(10);
-        // 初始停止在第一帧
-        this.sprite.stop();
-        this.sprite.setFrame(0);
+        // 当前方向
+        this.currentDirection = 'side';
         
         // 发光效果
         this.glow = scene.add.circle(x, y, this.radius * 1.8, 0x4FC3F7, 0.12);
@@ -62,9 +61,24 @@ export class Player {
             this.y += ny * this.speed * speedMult * dt;
             if (nx > 0.1) this.facingRight = true;
             else if (nx < -0.1) this.facingRight = false;
-            // 播放行走动画
-            if (!this.sprite.anims.isPlaying) {
-                this.sprite.play('player_walk');
+            
+            // 根据移动方向选择动画
+            let newDirection = 'side';
+            if (Math.abs(ny) > Math.abs(nx)) {
+                // 上下移动为主
+                newDirection = ny > 0 ? 'front' : 'back';
+            } else {
+                // 左右移动为主
+                newDirection = 'side';
+            }
+            
+            // 切换动画方向
+            if (newDirection !== this.currentDirection || !this.sprite.anims.isPlaying) {
+                this.currentDirection = newDirection;
+                const animKey = 'player_cartoon_' + newDirection + '_walk';
+                if (this.scene.anims.exists(animKey)) {
+                    this.sprite.play(animKey);
+                }
             }
         } else {
             // 静止时停止在第一帧
@@ -90,7 +104,12 @@ export class Player {
         
         // 更新显示
         this.sprite.setPosition(this.x, this.y);
-        this.sprite.setFlipX(!this.facingRight);
+        // 只有侧面动画需要翻转，正面和背面不需要
+        if (this.currentDirection === 'side') {
+            this.sprite.setFlipX(!this.facingRight);
+        } else {
+            this.sprite.setFlipX(false);
+        }
         // 受伤闪烁
         if (this.invincibleTimer > 0) {
             this.sprite.setAlpha(0.5 + Math.sin(Date.now() / 50) * 0.3);
