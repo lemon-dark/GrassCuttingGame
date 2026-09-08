@@ -34,6 +34,17 @@ class GameWorld {
     var timeScale = 1f
     var slowMoDuration = 0f
 
+    // 命中停顿（hitstop）
+    var hitstopTimer = 0f
+    fun triggerHitstop(duration: Float) {
+        if (duration > hitstopTimer) hitstopTimer = duration
+    }
+
+    // 连击系统（清屏冲击波）
+    private var killCombo = 0
+    private var killComboTimer = 0f
+    private var lastShockwaveTime = 0f
+
     // 屏幕震动（GameView 消费）
     var shakeAmount = 0f
     var shakeDuration = 0f
@@ -69,7 +80,7 @@ class GameWorld {
     val lightningBolts = mutableListOf<LightningBolt>()
 
     // 音效事件队列（GameView 消费）
-    val soundEvents = mutableListOf<String>()
+    val soundEvents = mutableListOf<Pair<String, Float>>()
     // 语音事件队列（GameView 消费）
     val voiceEvents = mutableListOf<String>()
     private var pickupSoundTimer = 0f
@@ -78,8 +89,8 @@ class GameWorld {
     // 受伤红屏闪烁
     var hurtFlashTimer = 0f
 
-    fun playSound(name: String) {
-        soundEvents.add(name)
+    fun playSound(name: String, rate: Float = 1f) {
+        soundEvents.add(name to rate)
     }
 
     fun playVoice(name: String) {
@@ -190,6 +201,12 @@ class GameWorld {
             return
         }
 
+        // 命中停顿（hitstop）—— 打击感核心
+        if (hitstopTimer > 0) {
+            hitstopTimer -= dt
+            return  // 停顿期间不更新游戏逻辑
+        }
+
         // 慢动作处理
         if (slowMoDuration > 0) {
             slowMoDuration -= dt
@@ -201,6 +218,11 @@ class GameWorld {
         if (pickupSoundTimer > 0) pickupSoundTimer -= sdt
         if (hurtFlashTimer > 0) hurtFlashTimer -= sdt
         if (voiceCooldown > 0) voiceCooldown -= sdt
+        // 连击计时器
+        if (killComboTimer > 0) {
+            killComboTimer -= sdt
+            if (killComboTimer <= 0) killCombo = 0
+        }
 
         // 胜利条件
         if (gameTime >= gameDuration && enemies.isEmpty()) {
@@ -336,10 +358,38 @@ class GameWorld {
                         isCrit = true
                     }
                     val killed = e.takeDamage(dmg)
-                    addFloatingText(e.x, e.y - e.radius - 5,
+                    // 命中停顿
+                    triggerHitstop(if (isCrit) 0.05f else 0.025f)
+                    // 击退
+                    val kbStrength = if (isCrit) 350f else 200f
+                    val bDist = hypot(b.vx, b.vy)
+                    if (bDist > 1) {
+                        e.knockbackX += (b.vx / bDist) * kbStrength
+                        e.knockbackY += (b.vy / bDist) * kbStrength
+                    }
+                    val ft = FloatingText(e.x, e.y - e.radius - 5,
                         dmg.toInt().toString(),
                         if (isCrit) GameConfig.COLOR_DAMAGE_CRIT else GameConfig.COLOR_DAMAGE,
-                        size = if (isCrit) 64f else 48f)
+                        size = if (isCrit) 72f else 48f)
+                    ft.isCrit = isCrit
+                    floatingTexts.add(ft)
+                    // 命中粒子：火花+血雾
+                    val particleCount = if (isCrit) 12 else 6
+                    for (i in 0 until particleCount) {
+                        val angle = random.nextFloat() * 6.28f
+                        val speed = 80 + random.nextFloat() * 200
+                        val isSpark = random.nextFloat() < 0.5f
+                        particles.add(Particle(
+                            e.x, e.y,
+                            cos(angle) * speed, sin(angle) * speed,
+                            color = if (isSpark) 0xFFFFEB3B.toInt() else 0xFFEF5350.toInt(),
+                            size = if (isSpark) 6f else 10f,
+                            lifetime = 0.3f + random.nextFloat() * 0.2f,
+                            gravity = 200f, drag = 2f,
+                            startColor = if (isSpark) 0xFFFFEB3B.toInt() else 0xFFEF5350.toInt(),
+                            endColor = if (isSpark) 0xFFFF6F00.toInt() else 0xFFB71C1C.toInt()
+                        ))
+                    }
                     if (killed) onEnemyKilled(e)
 
                     // 冰锥减速效果
@@ -414,6 +464,13 @@ class GameWorld {
                 val effectiveSpeed = e.speed * e.slowFactor
                 e.x += (dx / dist) * effectiveSpeed * dt
                 e.y += (dy / dist) * effectiveSpeed * dt
+                // 击退效果
+                e.x += e.knockbackX * dt
+                e.y += e.knockbackY * dt
+                e.knockbackX *= 0.85f  // 快速衰减
+                e.knockbackY *= 0.85f
+                if (kotlin.math.abs(e.knockbackX) < 1f) e.knockbackX = 0f
+                if (kotlin.math.abs(e.knockbackY) < 1f) e.knockbackY = 0f
                 // 朝向
                 if (dx > 0) e.facingRight = true else e.facingRight = false
                 // 行走动画：速度越快帧切换越快
@@ -525,6 +582,8 @@ class GameWorld {
             ft.y += ft.vy * dt
             ft.lifetime -= dt
             ft.alpha = (ft.lifetime / 0.8f * 255).toInt().coerceIn(0, 255)
+            // 弹跳动画：从1.5快速弹回1.0
+            ft.scale += (1f - ft.scale) * 0.2f
             if (ft.lifetime <= 0) ftIter.remove()
         }
         // 粒子（使用新的 update 方法，包含重力/阻力/颜色渐变）
@@ -632,6 +691,29 @@ class GameWorld {
 
     fun onEnemyKilled(e: Enemy) {
         player.kills++
+        // 连击系统
+        killCombo++
+        killComboTimer = 1.5f  // 1.5秒内连击有效
+        if (killCombo >= 15 && gameTime - lastShockwaveTime > 2f) {
+            // 清屏冲击波
+            lastShockwaveTime = gameTime
+            triggerFlash(0xFFFFFFFF.toInt(), 0.15f)
+            triggerShake(12f, 0.25f)
+            triggerHitstop(0.08f)
+            // 环形冲击波粒子
+            for (i in 0 until 30) {
+                val angle = i / 30f * 6.28f
+                particles.add(Particle(
+                    player.x, player.y,
+                    cos(angle) * 500, sin(angle) * 500,
+                    color = 0xFF00E5FF.toInt(), size = 12f,
+                    lifetime = 0.5f, gravity = 0f, drag = 1.5f,
+                    startColor = 0xFF00E5FF.toInt(), endColor = 0xFF7C4DFF.toInt()
+                ))
+            }
+            addFloatingText(player.x, player.y - 100, "清屏! x$killCombo", 0xFF00E5FF.toInt(), size = 72f)
+            killCombo = 0
+        }
         // 战斗语音：普通敌人1%概率（割草杀太多，不能太频繁），精英/Boss 15%概率
         when (e.type) {
             EnemyType.BOSS, EnemyType.ELITE -> {

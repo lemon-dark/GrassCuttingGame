@@ -19,9 +19,9 @@ abstract class Skill(
     open val evolutionName: String = ""  // 超武名称
     private var soundTimer = 0f
 
-    protected fun playShootSound(world: GameWorld, interval: Float = 0.12f) {
+    protected fun playShootSound(world: GameWorld, interval: Float = 0.12f, rate: Float = 1f) {
         if (soundTimer <= 0) {
-            world.playSound("shoot")
+            world.playSound("shoot", rate)
             soundTimer = interval
         }
     }
@@ -74,7 +74,7 @@ class BasicAttackSkill : Skill(
                 // 超武：三联能量炮——3发扇形大子弹，穿透5
                 val target = findNearestEnemy(player, world, 700f)
                 if (target != null) {
-                    playShootSound(world, 0.1f)
+                    playShootSound(world, 0.1f, 1.0f)
                     val baseAngle = atan2(target.y - player.y, target.x - player.x)
                     val dmg = player.effectiveAtk * 1.5f
                     for (i in -1..1) {
@@ -93,7 +93,7 @@ class BasicAttackSkill : Skill(
                 }
             } else {
                 val targets = findNearestEnemies(player, world, level, 700f)
-                if (targets.isNotEmpty()) playShootSound(world)
+                if (targets.isNotEmpty()) playShootSound(world, rate = 1.0f)
                 for (target in targets) {
                     val dx = target.x - player.x
                     val dy = target.y - player.y
@@ -147,7 +147,7 @@ class KnifeSkill : Skill(
             if (cooldownTimer <= 0) {
                 val target = findNearestEnemy(player, world, 800f)
                 if (target != null) {
-                    playShootSound(world, 0.15f)
+                    playShootSound(world, 0.15f, 1.5f)
                     val baseAngle = atan2(target.y - player.y, target.x - player.x)
                     val dmg = player.effectiveAtk * (2f + level * 0.3f)
                     for (i in 0 until 12) {
@@ -168,7 +168,7 @@ class KnifeSkill : Skill(
         } else {
             if (cooldownTimer <= 0) {
                 val targets = findNearestEnemies(player, world, level, 750f)
-                if (targets.isNotEmpty()) playShootSound(world, 0.15f)
+                if (targets.isNotEmpty()) playShootSound(world, 0.15f, 1.5f)
                 val dmg = player.effectiveAtk * (1.5f + level * 0.2f)
                 for (target in targets) {
                     val dx = target.x - player.x
@@ -213,7 +213,7 @@ class FireballSkill : Skill(
             if (cooldownTimer <= 0) {
                 val targets = findNearestEnemies(player, world, 3, 900f)
                 if (targets.isNotEmpty()) {
-                    playShootSound(world, 0.2f)
+                    playShootSound(world, 0.2f, 0.7f)
                     val dmg = player.effectiveAtk * (3f + level * 0.4f)
                     val radius = 200f + level * 25f
                     for (target in targets) {
@@ -233,7 +233,7 @@ class FireballSkill : Skill(
             if (cooldownTimer <= 0) {
                 val target = findNearestEnemy(player, world, 800f)
                 if (target != null) {
-                    playShootSound(world, 0.2f)
+                    playShootSound(world, 0.2f, 0.7f)
                     val dx = target.x - player.x
                     val dy = target.y - player.y
                     val dist = hypot(dx, dy)
@@ -279,7 +279,7 @@ class LightningSkill : Skill(
         if (cooldownTimer <= 0) {
             val firstTarget = findNearestEnemy(player, world, 700f)
             if (firstTarget != null) {
-                playShootSound(world, 0.2f)
+                playShootSound(world, 0.2f, 1.8f)
                 if (evolved) {
                     // 超武：雷神之怒——跳跃×2，宽度×3，每个命中点小爆炸
                     val jumps = (2 + level) * 2
@@ -383,7 +383,7 @@ class MissileSkill : Skill(
             val count = if (evolved) 8 else level
             val targets = findNearestEnemies(player, world, count, 900f)
             if (targets.isNotEmpty()) {
-                playShootSound(world, 0.18f)
+                playShootSound(world, 0.18f, 0.8f)
                 val dmg = player.effectiveAtk * (1.8f + level * 0.25f)
                 val expRadius = if (evolved) 120f else 80f
                 for (i in targets.indices) {
@@ -448,7 +448,7 @@ class IceSpikeSkill : Skill(
             } else {
                 val targets = findNearestEnemies(player, world, level, 800f)
                 if (targets.isNotEmpty()) {
-                    playShootSound(world, 0.15f)
+                    playShootSound(world, 0.15f, 1.3f)
                     val dmg = player.effectiveAtk * (1.2f + level * 0.2f)
                     val slowFactor = (0.5f - level * 0.03f).coerceAtLeast(0.3f)  // 减速50%→26%
                     for (target in targets) {

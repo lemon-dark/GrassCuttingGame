@@ -198,12 +198,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         }
     }
 
-    private fun playSound(name: String) {
+    private fun playSound(name: String, rate: Float = 1f) {
         if (!soundReady || !Settings.soundEnabled) return
         soundIds[name]?.let { id ->
             // 拾取音效使用独立音量设置，其他音效使用主音量
             val vol = if (name == "pickup") Settings.pickupVolume else Settings.soundVolume
-            soundPool.play(id, vol, vol, 1, 0, 1f)
+            soundPool.play(id, vol, vol, 1, 0, rate.coerceIn(0.5f, 2f))
         }
     }
 
@@ -247,7 +247,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             if (world.soundEvents.isNotEmpty()) {
                 val events = ArrayList(world.soundEvents)
                 world.soundEvents.clear()
-                for (e in events) playSound(e)
+                for (e in events) playSound(e.first, e.second)
             }
             // 消费语音事件
             if (world.voiceEvents.isNotEmpty()) {
@@ -848,11 +848,29 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun drawFloatingTexts(canvas: Canvas) {
         if (!Settings.damageNumbers) return
         for (ft in world.floatingTexts) {
-            textPaint.color = ft.color
-            textPaint.alpha = ft.alpha
-            textPaint.textSize = ft.size
-            textPaint.isFakeBoldText = true
-            canvas.drawText(ft.text, ft.x, ft.y, textPaint)
+            canvas.save()
+            canvas.translate(ft.x, ft.y)
+            canvas.scale(ft.scale, ft.scale)
+            if (ft.isCrit) {
+                // 暴击：黑色描边 + 金色文字
+                textPaint.color = 0xFF000000.toInt()
+                textPaint.alpha = ft.alpha
+                textPaint.textSize = ft.size
+                textPaint.isFakeBoldText = true
+                textPaint.strokeWidth = 6f
+                textPaint.style = Paint.Style.STROKE
+                canvas.drawText(ft.text, 0f, 0f, textPaint)
+                textPaint.style = Paint.Style.FILL
+                textPaint.color = ft.color
+                canvas.drawText(ft.text, 0f, 0f, textPaint)
+            } else {
+                textPaint.color = ft.color
+                textPaint.alpha = ft.alpha
+                textPaint.textSize = ft.size
+                textPaint.isFakeBoldText = true
+                canvas.drawText(ft.text, 0f, 0f, textPaint)
+            }
+            canvas.restore()
         }
         textPaint.alpha = 255
         textPaint.isFakeBoldText = false
@@ -864,7 +882,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         val w = canvasWidth.toFloat()
         val h = canvasHeight.toFloat()
 
-        // 左上：血条
+        // 左上：血条（渐变+发光）
         val hpBarW = w * 0.38f
         val hpBarH = h * 0.022f
         val hpX = w * 0.03f
@@ -873,20 +891,28 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         canvas.drawRoundRect(RectF(hpX - 4, hpY - 4, hpX + hpBarW + 4, hpY + hpBarH + 4), 8f, 8f, paint)
         paint.color = GameConfig.COLOR_HP_BG
         canvas.drawRoundRect(RectF(hpX, hpY, hpX + hpBarW, hpY + hpBarH), 6f, 6f, paint)
-        paint.color = GameConfig.COLOR_HP_FG
+        // 血条渐变（红→橙）
+        val hpGrad = android.graphics.LinearGradient(hpX, hpY, hpX + hpBarW, hpY,
+            0xFFEF5350.toInt(), 0xFFFF8A65.toInt(), android.graphics.Shader.TileMode.CLAMP)
+        paint.shader = hpGrad
         canvas.drawRoundRect(RectF(hpX, hpY, hpX + hpBarW * (p.hp / p.effectiveMaxHp), hpY + hpBarH), 6f, 6f, paint)
+        paint.shader = null
         textPaint.color = Color.WHITE
         textPaint.textSize = h * 0.018f
         textPaint.textAlign = Paint.Align.LEFT
         canvas.drawText("${p.hp.toInt()} / ${p.effectiveMaxHp.toInt()}", hpX + 10, hpY + hpBarH * 0.75f, textPaint)
 
-        // 经验条
+        // 经验条（渐变+发光）
         val xpY = hpY + hpBarH + h * 0.012f
         val xpBarH = h * 0.014f
         paint.color = GameConfig.COLOR_XP_BAR_BG
         canvas.drawRoundRect(RectF(hpX, xpY, hpX + hpBarW, xpY + xpBarH), 6f, 6f, paint)
-        paint.color = GameConfig.COLOR_XP_BAR_FG
+        // 经验条渐变（金→橙）
+        val xpGrad = android.graphics.LinearGradient(hpX, xpY, hpX + hpBarW, xpY,
+            0xFFFFD700.toInt(), 0xFFFFAB40.toInt(), android.graphics.Shader.TileMode.CLAMP)
+        paint.shader = xpGrad
         canvas.drawRoundRect(RectF(hpX, xpY, hpX + hpBarW * (p.xp.toFloat() / p.xpToNext), xpY + xpBarH), 6f, 6f, paint)
+        paint.shader = null
 
         // 等级
         textPaint.color = 0xFFFFEB3B.toInt()
@@ -1104,13 +1130,26 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
         for ((index, option) in world.levelUpOptions.withIndex()) {
             val rect = RectF(cardX, cardY, cardX + cardW, cardY + cardH)
-            paint.color = 0xFF1B5E20.toInt()
+            // 根据选项类型选择渐变颜色
+            val (cardColor1, cardColor2, borderColor) = when (option) {
+                is Skill -> Triple(0xFF1A237E.toInt(), 0xFF0D47A1.toInt(), 0xFF536DFE.toInt())
+                is StatUpgrade -> Triple(option.color, darkerColor(option.color), 0xFFFFFFFF.toInt())
+                else -> Triple(0xFF1B5E20.toInt(), 0xFF1B5E20.toInt(), 0xFF4CAF50.toInt())
+            }
+            // 渐变背景
+            val cardGrad = android.graphics.LinearGradient(cardX, cardY, cardX, cardY + cardH,
+                cardColor1, cardColor2, android.graphics.Shader.TileMode.CLAMP)
+            paint.shader = cardGrad
             canvas.drawRoundRect(rect, 16f, 16f, paint)
-            paint.color = 0xFF4CAF50.toInt()
+            paint.shader = null
+            // 发光边框
+            paint.color = borderColor
+            paint.alpha = 150
             paint.strokeWidth = 3f
             paint.style = Paint.Style.STROKE
             canvas.drawRoundRect(rect, 16f, 16f, paint)
             paint.style = Paint.Style.FILL
+            paint.alpha = 255
 
             val iconR = w * 0.065f
             val iconY = cardY + h * 0.07f
@@ -1180,46 +1219,89 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun drawMenu(canvas: Canvas) {
         val w = canvasWidth.toFloat()
         val h = canvasHeight.toFloat()
-        paint.color = 0xFF0D0D1A.toInt()
+        // 渐变背景
+        val bgGradient = android.graphics.LinearGradient(0f, 0f, 0f, h,
+            0xFF0D1B2A.toInt(), 0xFF1B2838.toInt(), android.graphics.Shader.TileMode.CLAMP)
+        paint.shader = bgGradient
         canvas.drawRect(0f, 0f, w, h, paint)
+        paint.shader = null
 
-        textPaint.color = 0xFF00E5FF.toInt()
-        textPaint.textSize = w * 0.11f
-        textPaint.isFakeBoldText = true
+        // 背景装饰：网格线
+        paint.color = 0xFF1A3A4A.toInt()
+        paint.alpha = 40
+        val gridSize = 80f
+        var gx = 0f
+        while (gx < w) { canvas.drawLine(gx, 0f, gx, h, paint); gx += gridSize }
+        var gy = 0f
+        while (gy < h) { canvas.drawLine(0f, gy, w, gy, paint); gy += gridSize }
+        paint.alpha = 255
+
+        // 标题发光效果（多层）
         textPaint.textAlign = Paint.Align.CENTER
+        textPaint.isFakeBoldText = true
+        textPaint.textSize = w * 0.11f
+        // 外发光
+        textPaint.color = 0xFF00E5FF.toInt()
+        textPaint.alpha = 30
+        for (i in 8 downTo 1 step 2) {
+            canvas.drawText("割草传说", w / 2f + i, h * 0.14f + i, textPaint)
+            canvas.drawText("割草传说", w / 2f - i, h * 0.14f - i, textPaint)
+        }
+        textPaint.alpha = 255
+        // 描边
+        textPaint.color = 0xFF004D6B.toInt()
+        textPaint.strokeWidth = 6f
+        textPaint.style = Paint.Style.STROKE
         canvas.drawText("割草传说", w / 2f, h * 0.14f, textPaint)
+        textPaint.style = Paint.Style.FILL
+        // 主标题（渐变文字）
+        val titleGradient = android.graphics.LinearGradient(0f, h * 0.08f, 0f, h * 0.16f,
+            0xFF00E5FF.toInt(), 0xFF7C4DFF.toInt(), android.graphics.Shader.TileMode.CLAMP)
+        textPaint.shader = titleGradient
+        canvas.drawText("割草传说", w / 2f, h * 0.14f, textPaint)
+        textPaint.shader = null
         textPaint.isFakeBoldText = false
 
-        // 金币显示
+        // 金币显示（带图标）
         textPaint.color = 0xFFFFD700.toInt()
         textPaint.textSize = h * 0.025f
-        canvas.drawText("金币: ${Settings.coins}", w / 2f, h * 0.19f, textPaint)
+        canvas.drawText("◆ 金币: ${Settings.coins} ◆", w / 2f, h * 0.19f, textPaint)
 
-        // 开始游戏（大按钮）
+        // 开始游戏（大按钮，渐变+发光边框）
         val btnW = w * 0.7f
         val btnH = h * 0.075f
         val btnX = (w - btnW) / 2
         var btnY = h * 0.24f
-        paint.color = 0xFF00C853.toInt()
-        canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 14f, 14f, paint)
+        // 按钮渐变
+        val startGradient = android.graphics.LinearGradient(btnX, btnY, btnX, btnY + btnH,
+            0xFF00E676.toInt(), 0xFF00C853.toInt(), android.graphics.Shader.TileMode.CLAMP)
+        paint.shader = startGradient
+        canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 16f, 16f, paint)
+        paint.shader = null
+        // 发光边框
+        paint.color = 0xFF69F0AE.toInt()
+        paint.strokeWidth = 3f
+        paint.style = Paint.Style.STROKE
+        canvas.drawRoundRect(RectF(btnX + 2, btnY + 2, btnX + btnW - 2, btnY + btnH - 2), 14f, 14f, paint)
+        paint.style = Paint.Style.FILL
         textPaint.color = Color.WHITE
-        textPaint.textSize = h * 0.03f
+        textPaint.textSize = h * 0.032f
         textPaint.isFakeBoldText = true
-        canvas.drawText("开始游戏", w / 2f, btnY + btnH * 0.65f, textPaint)
+        canvas.drawText("▶ 开始游戏 ◀", w / 2f, btnY + btnH * 0.65f, textPaint)
 
-        // 网格按钮（2列）
+        // 网格按钮（2列，渐变+边框）
         val gridBtnW = (w - w * 0.12f) / 2f
         val gridBtnH = h * 0.065f
         val gap = h * 0.015f
         val menuItems = listOf(
-            "关卡选择" to 0xFF1976D2.toInt(),
-            "永久强化" to 0xFFF57F17.toInt(),
-            "角色选择" to 0xFF7B1FA2.toInt(),
-            "装备选择" to 0xFF00796B.toInt(),
-            "怪物图鉴" to 0xFFC62828.toInt(),
-            "武器图鉴" to 0xFFEF6C00.toInt(),
-            "技能图鉴" to 0xFF2E7D32.toInt(),
-            "设置" to 0xFF455A64.toInt()
+            Triple("关卡选择", 0xFF1976D2.toInt(), 0xFF0D47A1.toInt()),
+            Triple("永久强化", 0xFFF57F17.toInt(), 0xFFE65100.toInt()),
+            Triple("角色选择", 0xFF7B1FA2.toInt(), 0xFF4A148C.toInt()),
+            Triple("装备选择", 0xFF00796B.toInt(), 0xFF004D40.toInt()),
+            Triple("怪物图鉴", 0xFFC62828.toInt(), 0xFFB71C1C.toInt()),
+            Triple("武器图鉴", 0xFFEF6C00.toInt(), 0xFFE65100.toInt()),
+            Triple("技能图鉴", 0xFF2E7D32.toInt(), 0xFF1B5E20.toInt()),
+            Triple("设置", 0xFF455A64.toInt(), 0xFF263238.toInt())
         )
         textPaint.isFakeBoldText = false
         textPaint.textSize = h * 0.024f
@@ -1229,8 +1311,20 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             val row = index / 2
             val gx = (w - gridBtnW * 2 - gap) / 2 + col * (gridBtnW + gap)
             val gy = btnY + row * (gridBtnH + gap)
+            // 渐变按钮
+            val btnGrad = android.graphics.LinearGradient(gx, gy, gx, gy + gridBtnH,
+                item.second, item.third, android.graphics.Shader.TileMode.CLAMP)
+            paint.shader = btnGrad
+            canvas.drawRoundRect(RectF(gx, gy, gx + gridBtnW, gy + gridBtnH), 12f, 12f, paint)
+            paint.shader = null
+            // 边框
             paint.color = item.second
-            canvas.drawRoundRect(RectF(gx, gy, gx + gridBtnW, gy + gridBtnH), 10f, 10f, paint)
+            paint.alpha = 120
+            paint.strokeWidth = 2f
+            paint.style = Paint.Style.STROKE
+            canvas.drawRoundRect(RectF(gx + 1, gy + 1, gx + gridBtnW - 1, gy + gridBtnH - 1), 11f, 11f, paint)
+            paint.style = Paint.Style.FILL
+            paint.alpha = 255
             textPaint.color = Color.WHITE
             canvas.drawText(item.first, gx + gridBtnW / 2, gy + gridBtnH * 0.65f, textPaint)
         }

@@ -92,6 +92,9 @@ class Enemy(x: Float, y: Float, val type: EnemyType, gameTime: Float) : Entity(x
     // 减速效果（冰锥术）
     var slowTimer = 0f
     var slowFactor = 1f  // 1=正常，0.5=减速50%
+    // 击退效果
+    var knockbackX = 0f
+    var knockbackY = 0f
 
     // 帧动画
     var animFrame = 0
@@ -170,6 +173,8 @@ class FloatingText(
     var vy = -60f
     var alive = true
     var alpha = 255
+    var scale = 1.5f  // 出生时放大，然后弹回
+    var isCrit = false
 }
 
 // ============ 粒子 ============
