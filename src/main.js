@@ -123,6 +123,9 @@ const config = {
 
 const game = new Phaser.Game(config);
 
+// 暴露游戏实例到window，方便自动化测试
+window.game = game;
+
 window.addEventListener('resize', () => {
     game.scale.resize(window.innerWidth, window.innerHeight);
 });

@@ -416,8 +416,7 @@ export class GameScene extends Phaser.Scene {
         if (this.paused) return;
         
         // 更新技能预览动画（仅在升级界面时更新）
-        // 暂时禁用，排查无限刷新问题
-        if (false && this.gameState === 'levelup' && this.skillPreviews && this.skillPreviews.length > 0) {
+        if (this.gameState === 'levelup' && this.skillPreviews && this.skillPreviews.length > 0) {
             try {
                 for (const preview of this.skillPreviews) {
                     if (preview.graphics && preview.graphics.active) {
@@ -1378,22 +1377,27 @@ export class GameScene extends Phaser.Scene {
                 break;
             }
             case '飞刀': {
-                // 3把飞刀围绕中心旋转
+                // 3把飞刀围绕中心旋转（直接计算旋转坐标，不用translate/rotate）
                 for (let i = 0; i < 3; i++) {
                     const angle = t * 3 + i * (Math.PI * 2 / 3);
                     const x = cx + Math.cos(angle) * s * 0.7;
                     const y = cy + Math.sin(angle) * s * 0.7;
-                    g.save();
-                    g.translate(x, y);
-                    g.rotate(angle + Math.PI / 2);
+                    const rot = angle + Math.PI / 2;
+                    const cos = Math.cos(rot), sin = Math.sin(rot);
+                    // 三角形三个顶点旋转后坐标
+                    const p1x = x + (0 * cos - (-8) * sin);
+                    const p1y = y + (0 * sin + (-8) * cos);
+                    const p2x = x + (4 * cos - 4 * sin);
+                    const p2y = y + (4 * sin + 4 * cos);
+                    const p3x = x + (-4 * cos - 4 * sin);
+                    const p3y = y + (-4 * sin + 4 * cos);
                     g.fillStyle(0xE0E0E0, 1);
                     g.beginPath();
-                    g.moveTo(0, -8);
-                    g.lineTo(4, 4);
-                    g.lineTo(-4, 4);
+                    g.moveTo(p1x, p1y);
+                    g.lineTo(p2x, p2y);
+                    g.lineTo(p3x, p3y);
                     g.closePath();
                     g.fillPath();
-                    g.restore();
                 }
                 break;
             }
@@ -1458,7 +1462,7 @@ export class GameScene extends Phaser.Scene {
                 break;
             }
             case '追踪导弹': {
-                // 3个导弹围绕中心旋转，带尾迹
+                // 3个导弹围绕中心旋转，带尾迹（直接计算旋转坐标）
                 for (let i = 0; i < 3; i++) {
                     const angle = t * 2.5 + i * (Math.PI * 2 / 3);
                     const x = cx + Math.cos(angle) * s * 0.7;
@@ -1467,25 +1471,42 @@ export class GameScene extends Phaser.Scene {
                     const tailAngle = angle - Math.PI * 0.3;
                     g.lineStyle(3, 0xFF5722, 0.4);
                     g.lineBetween(x, y, x + Math.cos(tailAngle) * 12, y + Math.sin(tailAngle) * 12);
-                    // 导弹
-                    g.save();
-                    g.translate(x, y);
-                    g.rotate(angle + Math.PI / 2);
+                    // 导弹（直接计算旋转坐标）
+                    const rot = angle + Math.PI / 2;
+                    const cos = Math.cos(rot), sin = Math.sin(rot);
+                    const rotatePoint = (px, py) => ({
+                        x: x + (px * cos - py * sin),
+                        y: y + (px * sin + py * cos)
+                    });
+                    // 弹身矩形（4个顶点）
+                    const r1 = rotatePoint(-3, -6);
+                    const r2 = rotatePoint(3, -6);
+                    const r3 = rotatePoint(3, 4);
+                    const r4 = rotatePoint(-3, 4);
                     g.fillStyle(0x9E9E9E, 1);
-                    g.fillRect(-3, -6, 6, 10);
-                    g.fillStyle(0xFF5722, 1);
                     g.beginPath();
-                    g.moveTo(0, -10);
-                    g.lineTo(3, -6);
-                    g.lineTo(-3, -6);
+                    g.moveTo(r1.x, r1.y);
+                    g.lineTo(r2.x, r2.y);
+                    g.lineTo(r3.x, r3.y);
+                    g.lineTo(r4.x, r4.y);
                     g.closePath();
                     g.fillPath();
-                    g.restore();
+                    // 弹头三角形
+                    const t1 = rotatePoint(0, -10);
+                    const t2 = rotatePoint(3, -6);
+                    const t3 = rotatePoint(-3, -6);
+                    g.fillStyle(0xFF5722, 1);
+                    g.beginPath();
+                    g.moveTo(t1.x, t1.y);
+                    g.lineTo(t2.x, t2.y);
+                    g.lineTo(t3.x, t3.y);
+                    g.closePath();
+                    g.fillPath();
                 }
                 break;
             }
             case '冰锥术': {
-                // 3个冰锥从中心射出，循环
+                // 3个冰锥从中心射出，循环（直接计算旋转坐标）
                 const cycle = (t % 1.5) / 1.5;
                 for (let i = 0; i < 3; i++) {
                     const angle = i * (Math.PI * 2 / 3) + cycle * Math.PI;
@@ -1493,51 +1514,71 @@ export class GameScene extends Phaser.Scene {
                     const x = cx + Math.cos(angle) * dist;
                     const y = cy + Math.sin(angle) * dist;
                     const alpha = 1 - cycle * 0.5;
-                    g.save();
-                    g.translate(x, y);
-                    g.rotate(angle + Math.PI / 2);
+                    const rot = angle + Math.PI / 2;
+                    const cos = Math.cos(rot), sin = Math.sin(rot);
+                    const rotatePoint = (px, py) => ({
+                        x: x + (px * cos - py * sin),
+                        y: y + (px * sin + py * cos)
+                    });
+                    // 外冰锥
+                    const o1 = rotatePoint(0, -10);
+                    const o2 = rotatePoint(5, 6);
+                    const o3 = rotatePoint(-5, 6);
                     g.fillStyle(0x80DEEA, alpha);
                     g.beginPath();
-                    g.moveTo(0, -10);
-                    g.lineTo(5, 6);
-                    g.lineTo(-5, 6);
+                    g.moveTo(o1.x, o1.y);
+                    g.lineTo(o2.x, o2.y);
+                    g.lineTo(o3.x, o3.y);
                     g.closePath();
                     g.fillPath();
+                    // 内冰锥
+                    const i1 = rotatePoint(0, -6);
+                    const i2 = rotatePoint(2, 2);
+                    const i3 = rotatePoint(-2, 2);
                     g.fillStyle(0xB2EBF2, alpha * 0.6);
                     g.beginPath();
-                    g.moveTo(0, -6);
-                    g.lineTo(2, 2);
-                    g.lineTo(-2, 2);
+                    g.moveTo(i1.x, i1.y);
+                    g.lineTo(i2.x, i2.y);
+                    g.lineTo(i3.x, i3.y);
                     g.closePath();
                     g.fillPath();
-                    g.restore();
                 }
                 break;
             }
             case '旋风斩': {
-                // 3个风刃围绕中心快速旋转
+                // 3个风刃围绕中心快速旋转（直接计算旋转坐标）
                 for (let i = 0; i < 3; i++) {
                     const angle = t * 5 + i * (Math.PI * 2 / 3);
                     const x = cx + Math.cos(angle) * s * 0.7;
                     const y = cy + Math.sin(angle) * s * 0.7;
-                    g.save();
-                    g.translate(x, y);
-                    g.rotate(angle + Math.PI / 2);
+                    const rot = angle + Math.PI / 2;
+                    const cos = Math.cos(rot), sin = Math.sin(rot);
+                    const rotatePoint = (px, py) => ({
+                        x: x + (px * cos - py * sin),
+                        y: y + (px * sin + py * cos)
+                    });
+                    // 外风刃
+                    const o1 = rotatePoint(0, -12);
+                    const o2 = rotatePoint(6, 8);
+                    const o3 = rotatePoint(-6, 8);
                     g.fillStyle(0x81C784, 0.8);
                     g.beginPath();
-                    g.moveTo(0, -12);
-                    g.lineTo(6, 8);
-                    g.lineTo(-6, 8);
+                    g.moveTo(o1.x, o1.y);
+                    g.lineTo(o2.x, o2.y);
+                    g.lineTo(o3.x, o3.y);
                     g.closePath();
                     g.fillPath();
+                    // 内风刃
+                    const i1 = rotatePoint(0, -8);
+                    const i2 = rotatePoint(3, 4);
+                    const i3 = rotatePoint(-3, 4);
                     g.fillStyle(0xA5D6A7, 0.5);
                     g.beginPath();
-                    g.moveTo(0, -8);
-                    g.lineTo(3, 4);
-                    g.lineTo(-3, 4);
+                    g.moveTo(i1.x, i1.y);
+                    g.lineTo(i2.x, i2.y);
+                    g.lineTo(i3.x, i3.y);
                     g.closePath();
                     g.fillPath();
-                    g.restore();
                 }
                 // 中心旋转气流
                 g.lineStyle(2, 0x81C784, 0.3);
