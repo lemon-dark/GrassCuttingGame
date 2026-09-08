@@ -12,6 +12,7 @@ import { soundManager } from '../audio/SoundManager.js';
 import { BackgroundImages } from '../assets/backgrounds.js';
 import { BackgroundGenerator } from '../utils/BackgroundGenerator.js';
 import { SpriteLoader } from '../utils/SpriteLoader.js';
+import { ParticleTextures } from '../assets/particleTextures.js';
 
 export class GameScene extends Phaser.Scene {
     constructor() {
@@ -40,6 +41,24 @@ export class GameScene extends Phaser.Scene {
         if (this.loadingText) {
             this.loadingText.destroy();
             this.loadingText = null;
+        }
+        
+        // 加载粒子贴图到纹理系统（Kenney CC0）
+        this.particleTexturesLoaded = false;
+        let loadedCount = 0;
+        const textureKeys = Object.keys(ParticleTextures);
+        for (const key of textureKeys) {
+            const img = new Image();
+            img.onload = () => {
+                if (!this.textures.exists(key)) {
+                    this.textures.addImage(key, img);
+                }
+                loadedCount++;
+                if (loadedCount >= textureKeys.length) {
+                    this.particleTexturesLoaded = true;
+                }
+            };
+            img.src = ParticleTextures[key];
         }
         
         this.gameState = 'playing';
@@ -959,20 +978,30 @@ export class GameScene extends Phaser.Scene {
     }
     
     spawnHitParticles(x, y, isCrit) {
-        const count = isCrit ? 8 : 4;
+        const count = isCrit ? 10 : 5;
+        const textures = isCrit ? ['spark_01','spark_02','spark_03','star_01','muzzle_01'] : ['spark_01','spark_02','muzzle_01'];
         for (let i = 0; i < count; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const speed = 50 + Math.random() * 150;
-            const color = Math.random() < 0.5 ? 0xFFFF00 : 0xFF6D00;
+            const speed = 80 + Math.random() * 200;
+            const texKey = textures[Math.floor(Math.random() * textures.length)];
+            const size = 8 + Math.random() * 12;
+            // 优先用贴图，失败则回退到circle
+            let graphics;
+            if (this.particleTexturesLoaded && this.textures.exists(texKey)) {
+                graphics = this.add.image(x, y, texKey).setDepth(1500).setTint(0xFFFF00);
+            } else {
+                graphics = this.add.circle(x, y, 3, 0xFFFF00, 0.8).setDepth(1500);
+            }
             this.particles.push({
                 x, y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                color,
-                size: 3 + Math.random() * 4,
+                color: 0xFFFF00,
+                size: size,
                 life: 0.3 + Math.random() * 0.2,
                 maxLife: 0.5,
-                graphics: this.add.circle(x, y, 3, color, 0.8)
+                graphics: graphics,
+                useTexture: this.particleTexturesLoaded && this.textures.exists(texKey)
             });
         }
     }
@@ -993,7 +1022,9 @@ export class GameScene extends Phaser.Scene {
             const alpha = p.life / p.maxLife;
             p.graphics.setPosition(p.x, p.y);
             p.graphics.setAlpha(alpha);
-            p.graphics.setScale(p.size / 3 * alpha);
+            // 贴图粒子用 size/20 作为基础缩放，circle 粒子用 size/3
+            const scale = p.useTexture ? (p.size / 20) * alpha : (p.size / 3) * alpha;
+            p.graphics.setScale(scale);
         }
     }
     
@@ -1118,18 +1149,36 @@ export class GameScene extends Phaser.Scene {
         if (Math.random() < chestChance) {
             this.spawnChest(enemy.x, enemy.y);
         }
-        // === 战斗手感：击杀粒子特效 ===
-        // 不同类型敌人不同粒子数量和颜色
+        // === 战斗手感：击杀粒子特效（用Kenney贴图代替代码圆点）===
         const particleCount = enemy.type === 'BOSS' ? 30 : enemy.type === 'ELITE' ? 18 : 10;
-        const particleColors = enemy.type === 'BOSS' ? [0xFFD700, 0xFF6D00, 0xFF5722, 0xFFFFFF] :
-                               enemy.type === 'ELITE' ? [0xFFA500, 0xFF6D00, 0xFFFFFF] :
-                               [enemy.color, 0xFFFFFF, 0xFFEB3B];
+        // 不同类型敌人用不同粒子贴图
+        let texPool;
+        if (enemy.type === 'BOSS') {
+            texPool = ['smoke_01','smoke_02','smoke_03','fire_01','flame_01','flame_02','magic_01','star_01','star_02','spark_01'];
+        } else if (enemy.type === 'ELITE') {
+            texPool = ['smoke_01','smoke_02','fire_01','flame_01','spark_01','spark_02','magic_01'];
+        } else {
+            texPool = ['smoke_01','smoke_02','spark_01','spark_02','light_01'];
+        }
+        const tintColors = enemy.type === 'BOSS' ? [0xFFD700, 0xFF6D00, 0xFF5722, 0xFFFFFF] :
+                           enemy.type === 'ELITE' ? [0xFFA500, 0xFF6D00, 0xFFFFFF] :
+                           [enemy.color, 0xFFFFFF, 0xFFEB3B];
         
         for (let i = 0; i < particleCount; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = (60 + Math.random() * 180) * (enemy.type === 'BOSS' ? 1.5 : 1);
-            const color = particleColors[Math.floor(Math.random() * particleColors.length)];
-            const size = (3 + Math.random() * 6) * (enemy.type === 'BOSS' ? 1.3 : 1);
+            const color = tintColors[Math.floor(Math.random() * tintColors.length)];
+            const size = (10 + Math.random() * 15) * (enemy.type === 'BOSS' ? 1.3 : 1);
+            const texKey = texPool[Math.floor(Math.random() * texPool.length)];
+            // 优先用贴图，失败则回退到circle
+            let graphics;
+            let useTexture = false;
+            if (this.particleTexturesLoaded && this.textures.exists(texKey)) {
+                graphics = this.add.image(enemy.x, enemy.y, texKey).setDepth(1500).setTint(color);
+                useTexture = true;
+            } else {
+                graphics = this.add.circle(enemy.x, enemy.y, size/3, color, 0.9).setDepth(1500);
+            }
             this.particles.push({
                 x: enemy.x, y: enemy.y,
                 vx: Math.cos(angle) * speed,
@@ -1138,7 +1187,8 @@ export class GameScene extends Phaser.Scene {
                 size: size,
                 life: 0.4 + Math.random() * 0.4,
                 maxLife: 0.8,
-                graphics: this.add.circle(enemy.x, enemy.y, size, color, 0.9)
+                graphics: graphics,
+                useTexture: useTexture
             });
         }
         
