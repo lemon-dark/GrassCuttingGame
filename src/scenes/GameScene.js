@@ -427,8 +427,8 @@ export class GameScene extends Phaser.Scene {
             dt *= 0.3;
         }
         
-        // 更新技能预览动画（升级界面时也需要更新）
-        if (this.skillPreviews && this.skillPreviews.length > 0) {
+        // 更新技能预览动画（仅在升级界面时更新）
+        if (this.gameState === 'levelup' && this.skillPreviews && this.skillPreviews.length > 0) {
             for (const preview of this.skillPreviews) {
                 preview.time += dt;
                 this.drawSkillPreview(preview);
@@ -1573,6 +1573,8 @@ export class GameScene extends Phaser.Scene {
         this.rerollBtn = null;
         this.rerollText = null;
         this.levelUpCards = [];
+        // 关键修复：清空技能预览动画数组，否则update会继续尝试使用已销毁的graphics对象导致卡死
+        this.skillPreviews = [];
     }
     
     updateHUD() {
