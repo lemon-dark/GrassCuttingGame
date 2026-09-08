@@ -722,25 +722,70 @@ export class GameScene extends Phaser.Scene {
                 if (knife.x !== undefined) {
                     // 用graphics绘制飞刀（直接计算旋转坐标，不用translate/rotate）
                     if (!knife.graphics) {
-                        knife.graphics = this.add.graphics();
+                        knife.graphics = this.add.graphics().setDepth(8);
                     }
                     knife.graphics.clear();
+                    
+                    // 1. 绘制拖尾效果
+                    if (knife.trail && knife.trail.length > 1) {
+                        for (let i = 0; i < knife.trail.length - 1; i++) {
+                            const alpha = (i / knife.trail.length) * 0.4;
+                            const width = 2 + (i / knife.trail.length) * 3;
+                            knife.graphics.lineStyle(width, 0x00BCD4, alpha);
+                            knife.graphics.lineBetween(knife.trail[i].x, knife.trail[i].y, knife.trail[i+1].x, knife.trail[i+1].y);
+                        }
+                    }
+                    
+                    // 2. 绘制发光效果（外层光晕）
+                    knife.graphics.fillStyle(0x00BCD4, 0.15);
+                    knife.graphics.fillCircle(knife.x, knife.y, 18);
+                    knife.graphics.fillStyle(0x00BCD4, 0.25);
+                    knife.graphics.fillCircle(knife.x, knife.y, 12);
+                    
+                    // 3. 绘制更锋利的飞刀形状
                     const angle = Math.atan2(knife.y - this.player.y, knife.x - this.player.x);
                     const cos = Math.cos(angle), sin = Math.sin(angle);
                     const rotatePoint = (px, py) => ({
                         x: knife.x + (px * cos - py * sin),
                         y: knife.y + (px * sin + py * cos)
                     });
-                    const p1 = rotatePoint(15, 0);
-                    const p2 = rotatePoint(0, 5);
-                    const p3 = rotatePoint(-8, 0);
-                    const p4 = rotatePoint(0, -5);
-                    knife.graphics.fillStyle(0xE0E0E0, 1);
+                    // 飞刀主体（更大更锋利）
+                    const p1 = rotatePoint(22, 0);    // 刀尖
+                    const p2 = rotatePoint(5, 7);     // 右上
+                    const p3 = rotatePoint(-10, 5);   // 右下
+                    const p4 = rotatePoint(-12, 0);   // 刀尾
+                    const p5 = rotatePoint(-10, -5);  // 左下
+                    const p6 = rotatePoint(5, -7);    // 左上
+                    // 刀身（银色渐变效果用多层填充模拟）
+                    knife.graphics.fillStyle(0x607D8B, 1);
                     knife.graphics.beginPath();
                     knife.graphics.moveTo(p1.x, p1.y);
                     knife.graphics.lineTo(p2.x, p2.y);
                     knife.graphics.lineTo(p3.x, p3.y);
                     knife.graphics.lineTo(p4.x, p4.y);
+                    knife.graphics.lineTo(p5.x, p5.y);
+                    knife.graphics.lineTo(p6.x, p6.y);
+                    knife.graphics.closePath();
+                    knife.graphics.fillPath();
+                    // 刀刃高光（白色）
+                    knife.graphics.fillStyle(0xFFFFFF, 0.7);
+                    knife.graphics.beginPath();
+                    knife.graphics.moveTo(p1.x, p1.y);
+                    knife.graphics.lineTo(p2.x, p2.y);
+                    knife.graphics.lineTo(0, 0);
+                    knife.graphics.closePath();
+                    knife.graphics.fillPath();
+                    // 刀柄（深色）
+                    const h1 = rotatePoint(-12, 3);
+                    const h2 = rotatePoint(-18, 2);
+                    const h3 = rotatePoint(-18, -2);
+                    const h4 = rotatePoint(-12, -3);
+                    knife.graphics.fillStyle(0x37474F, 1);
+                    knife.graphics.beginPath();
+                    knife.graphics.moveTo(h1.x, h1.y);
+                    knife.graphics.lineTo(h2.x, h2.y);
+                    knife.graphics.lineTo(h3.x, h3.y);
+                    knife.graphics.lineTo(h4.x, h4.y);
                     knife.graphics.closePath();
                     knife.graphics.fillPath();
                 }
@@ -750,7 +795,7 @@ export class GameScene extends Phaser.Scene {
         // 光环
         const auraSkill = this.player.getSkill('灼烧光环');
         if (auraSkill && auraSkill.level > 0) {
-            if (!this.auraGraphics) this.auraGraphics = this.add.graphics();
+            if (!this.auraGraphics) this.auraGraphics = this.add.graphics().setDepth(8);
             this.auraGraphics.clear();
             this.auraGraphics.lineStyle(3, 0xFF6D00, 0.6);
             this.auraGraphics.strokeCircle(this.player.x, this.player.y, auraSkill.radius);
@@ -765,7 +810,7 @@ export class GameScene extends Phaser.Scene {
         if (whirlSkill && whirlSkill.level > 0) {
             for (const blade of whirlSkill.blades) {
                 if (blade.x !== undefined) {
-                    if (!blade.graphics) blade.graphics = this.add.graphics();
+                    if (!blade.graphics) blade.graphics = this.add.graphics().setDepth(8);
                     blade.graphics.clear();
                     const angle = Math.atan2(blade.y - this.player.y, blade.x - this.player.x) + Math.PI / 2;
                     const cos = Math.cos(angle), sin = Math.sin(angle);
@@ -986,7 +1031,7 @@ export class GameScene extends Phaser.Scene {
                 size: 4 + Math.random() * 5,
                 life: 0.4 + Math.random() * 0.3,
                 maxLife: 0.7,
-                graphics: this.add.circle(x, y, 4, color, 0.8)
+                graphics: this.add.circle(x, y, 4, color, 0.8).setDepth(12)
             });
         }
         this.cameras.main.shake(100, 0.008);
@@ -1002,7 +1047,7 @@ export class GameScene extends Phaser.Scene {
                 continue;
             }
             if (!exp.graphics) {
-                exp.graphics = this.add.graphics();
+                exp.graphics = this.add.graphics().setDepth(8);
             }
             const progress = 1 - exp.life / exp.maxLife;
             const r = exp.radius * progress;
@@ -1024,7 +1069,7 @@ export class GameScene extends Phaser.Scene {
                 this.lightningBolts.splice(i, 1);
                 continue;
             }
-            if (!bolt.graphics) bolt.graphics = this.add.graphics();
+            if (!bolt.graphics) bolt.graphics = this.add.graphics().setDepth(8);
             const alpha = bolt.life / bolt.maxLife;
             bolt.graphics.clear();
             bolt.graphics.lineStyle(3, bolt.color, alpha);
@@ -1055,9 +1100,9 @@ export class GameScene extends Phaser.Scene {
             // 优先用贴图，失败则回退到circle
             let graphics;
             if (this.particleTexturesLoaded && this.textures.exists(texKey)) {
-                graphics = this.add.image(x, y, texKey).setDepth(1500).setTint(0xFFFF00);
+                graphics = this.add.image(x, y, texKey).setDepth(12).setTint(0xFFFF00);
             } else {
-                graphics = this.add.circle(x, y, 3, 0xFFFF00, 0.8).setDepth(1500);
+                graphics = this.add.circle(x, y, 3, 0xFFFF00, 0.8).setDepth(12);
             }
             this.particles.push({
                 x, y,
@@ -1102,7 +1147,7 @@ export class GameScene extends Phaser.Scene {
             fontWeight: 'bold',
             stroke: isCrit ? '#000000' : null,
             strokeThickness: isCrit ? 3 : 0
-        }).setDepth(2000).setOrigin(0.5);
+        }).setDepth(13).setOrigin(0.5);
         
         // 暴击数字：更大、带描边、弹出动画
         if (isCrit) {
@@ -1241,10 +1286,10 @@ export class GameScene extends Phaser.Scene {
             let graphics;
             let useTexture = false;
             if (this.particleTexturesLoaded && this.textures.exists(texKey)) {
-                graphics = this.add.image(enemy.x, enemy.y, texKey).setDepth(1500).setTint(color);
+                graphics = this.add.image(enemy.x, enemy.y, texKey).setDepth(12).setTint(color);
                 useTexture = true;
             } else {
-                graphics = this.add.circle(enemy.x, enemy.y, size/3, color, 0.9).setDepth(1500);
+                graphics = this.add.circle(enemy.x, enemy.y, size/3, color, 0.9).setDepth(12);
             }
             this.particles.push({
                 x: enemy.x, y: enemy.y,

@@ -27,8 +27,8 @@ export class Bullet {
         this.color = this.colors[type] || this.colors.energy;
         
         // 创建图形
-        this.graphics = scene.add.graphics();
-        this.glow = scene.add.circle(x, y, this.radius * 2, this.color.glow, 0.3);
+        this.graphics = scene.add.graphics().setDepth(8);
+        this.glow = scene.add.circle(x, y, this.radius * 2, this.color.glow, 0.3).setDepth(7);
         this.drawBullet();
     }
     

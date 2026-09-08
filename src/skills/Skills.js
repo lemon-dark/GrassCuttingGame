@@ -120,10 +120,11 @@ export class KnifeSkill extends Skill {
         super.update(player, scene, dt);
         // 维护环绕飞刀数量
         while (this.orbitingKnives.length < this.knifeCount) {
-            this.orbitingKnives.push({ hitEnemies: new Set() });
+            this.orbitingKnives.push({ hitEnemies: new Set(), trail: [] });
         }
         while (this.orbitingKnives.length > this.knifeCount) {
-            this.orbitingKnives.pop();
+            const removed = this.orbitingKnives.pop();
+            if (removed.graphics) removed.graphics.destroy();
         }
         // 更新基础旋转角度
         this.baseAngle += this.rotationSpeed * dt;
@@ -133,6 +134,10 @@ export class KnifeSkill extends Skill {
             const angle = this.baseAngle + (i / this.knifeCount) * Math.PI * 2;
             const kx = player.x + Math.cos(angle) * this.orbitRadius;
             const ky = player.y + Math.sin(angle) * this.orbitRadius;
+            // 记录历史位置用于拖尾
+            if (!knife.trail) knife.trail = [];
+            knife.trail.push({ x: kx, y: ky });
+            if (knife.trail.length > 8) knife.trail.shift();
             knife.x = kx; knife.y = ky;
             // 碰撞敌人
             for (const e of scene.enemies) {
