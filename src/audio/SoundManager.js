@@ -66,21 +66,37 @@ export class SoundManager {
         }
     }
     
-    // 异步解码所有语音文件
+    // 异步解码所有语音文件（直接解码base64，不用fetch）
     async loadVoices() {
         if (this.voicesLoaded) return;
+        console.log('开始加载角色语音...');
         try {
             const keys = Object.keys(VoiceClips);
             for (const key of keys) {
-                const response = await fetch(VoiceClips[key]);
-                const arrayBuffer = await response.arrayBuffer();
-                const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
-                this.voiceBuffers[key] = audioBuffer;
+                try {
+                    const dataUri = VoiceClips[key];
+                    // 从 data URI 中提取 base64 数据
+                    const base64 = dataUri.split(',')[1];
+                    // 解码 base64 为二进制字符串
+                    const binaryString = atob(base64);
+                    // 转换为 ArrayBuffer
+                    const len = binaryString.length;
+                    const bytes = new Uint8Array(len);
+                    for (let i = 0; i < len; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    // 解码音频
+                    const audioBuffer = await this.ctx.decodeAudioData(bytes.buffer);
+                    this.voiceBuffers[key] = audioBuffer;
+                    console.log(`语音加载成功: ${key} (${audioBuffer.duration.toFixed(1)}秒)`);
+                } catch (e) {
+                    console.error(`语音加载失败: ${key}`, e);
+                }
             }
             this.voicesLoaded = true;
-            console.log('角色语音加载完成:', keys.length, '个');
+            console.log('角色语音全部加载完成:', Object.keys(this.voiceBuffers).length, '/', keys.length, '个');
         } catch (e) {
-            console.error('语音加载失败:', e);
+            console.error('语音加载过程出错:', e);
         }
     }
     
