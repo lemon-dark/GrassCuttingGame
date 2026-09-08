@@ -17,8 +17,12 @@ import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import com.grasscut.game.R
+import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.sin
+
+data class Quad<out A, out B, out C, out D>(val first: A, val second: B, val third: C, val fourth: D)
 
 class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(context, attrs),
     SurfaceHolder.Callback, Runnable {
@@ -279,6 +283,17 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                 }
                 return
             }
+            // 子页面渲染
+            when (world.state) {
+                GameState.LEVEL_SELECT -> { drawLevelSelect(canvas); return }
+                GameState.META_UPGRADE -> { drawMetaUpgrade(canvas); return }
+                GameState.CHARACTERS -> { drawCharacters(canvas); return }
+                GameState.EQUIPMENT -> { drawEquipment(canvas); return }
+                GameState.BESTIARY -> { drawBestiary(canvas); return }
+                GameState.WEAPONS -> { drawWeapons(canvas); return }
+                GameState.SKILLS_INFO -> { drawSkillsInfo(canvas); return }
+                else -> {}
+            }
 
             // 屏幕震动（在世界坐标渲染之前偏移整个画布）
             if (world.shakeDuration > 0) {
@@ -479,14 +494,25 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                 EnemyType.BOSS -> enemyBossSheetBmp
             }
             val alpha = if (e.hitFlash > 0) 180 else 255
-            drawCharacter(canvas, sheet, e.x, e.y, e.radius, e.animFrame, e.facingRight, alpha)
+            val visualRadius = e.radius * GameConfig.VISUAL_ENEMY_SCALE
+            // 受击时轻微放大
+            val hitScale = if (e.hitFlash > 0) 1.15f else 1f
+            val renderRadius = visualRadius * hitScale
+            drawCharacter(canvas, sheet, e.x, e.y, renderRadius, e.animFrame, e.facingRight, alpha)
+            // 受击白色闪光覆盖
+            if (e.hitFlash > 0) {
+                paint.color = 0xFFFFFFFF.toInt()
+                paint.alpha = (e.hitFlash / 0.15f * 120).toInt().coerceIn(0, 120)
+                canvas.drawCircle(e.x, e.y, renderRadius * 0.9f, paint)
+                paint.alpha = 255
+            }
 
             // 血条
             if (e.hp < e.maxHp) {
-                val barW = e.radius * 2
-                val barH = 4f
-                val barX = e.x - e.radius
-                val barY = e.y - e.radius - 10
+                val barW = visualRadius * 2
+                val barH = 5f
+                val barX = e.x - visualRadius
+                val barY = e.y - visualRadius - 12
                 paint.color = 0xFF000000.toInt()
                 paint.alpha = 150
                 canvas.drawRect(barX, barY, barX + barW, barY + barH, paint)
@@ -497,12 +523,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
             // 冰冻效果
             if (e.slowTimer > 0) {
-                drawGlow(canvas, glowBlue, e.x, e.y, e.radius * 1.3f, 80)
+                drawGlow(canvas, glowBlue, e.x, e.y, visualRadius * 1.3f, 80)
                 paint.color = 0xFF81D4FA.toInt()
                 paint.alpha = 100
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = 3f
-                canvas.drawCircle(e.x, e.y, e.radius * 1.1f, paint)
+                canvas.drawCircle(e.x, e.y, visualRadius * 1.1f, paint)
                 paint.style = Paint.Style.FILL
                 paint.alpha = 255
             }
@@ -513,7 +539,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun drawPlayer(canvas: Canvas) {
         val p = world.player
         val alpha = if (p.invincibleTimer > 0 && (p.invincibleTimer * 20).toInt() % 2 == 0) 100 else 255
-        drawCharacter(canvas, playerSheetBmp, p.x, p.y, p.radius, p.animFrame, p.facingRight, alpha)
+        val visualRadius = p.radius * GameConfig.VISUAL_PLAYER_SCALE
+        drawCharacter(canvas, playerSheetBmp, p.x, p.y, visualRadius, p.animFrame, p.facingRight, alpha)
     }
 
     // ============ 子弹 ============
@@ -926,6 +953,117 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     }
 
     // ============ 升级界面 ============
+    // ============ 技能图标（渐变+图案） ============
+    private fun drawSkillIcon(canvas: Canvas, skill: Skill, cx: Float, cy: Float, r: Float) {
+        // 径向渐变背景
+        val gradient = android.graphics.RadialGradient(cx, cy, r,
+            skill.iconColor, darkerColor(skill.iconColor), android.graphics.Shader.TileMode.CLAMP)
+        paint.shader = gradient
+        canvas.drawCircle(cx, cy, r, paint)
+        paint.shader = null
+        // 外圈
+        paint.color = 0xFFFFFFFF.toInt()
+        paint.alpha = 60
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 2f
+        canvas.drawCircle(cx, cy, r - 2f, paint)
+        paint.style = Paint.Style.FILL
+        paint.alpha = 255
+        // 根据技能类型画图案
+        paint.color = 0xFFFFFFFF.toInt()
+        paint.alpha = 220
+        when (skill) {
+            is BasicAttackSkill -> {
+                // 能量弹：中心圆点+射线
+                canvas.drawCircle(cx, cy, r * 0.25f, paint)
+                for (i in 0 until 4) {
+                    val angle = i * Math.PI / 2 + world.gameTime * 2
+                    canvas.drawLine(cx, cy,
+                        cx + cos(angle.toFloat()) * r * 0.7f, cy + sin(angle.toFloat()) * r * 0.7f, paint)
+                }
+            }
+            is KnifeSkill -> {
+                // 飞刀：交叉的两条线
+                paint.strokeWidth = 4f
+                canvas.drawLine(cx - r * 0.5f, cy - r * 0.5f, cx + r * 0.5f, cy + r * 0.5f, paint)
+                canvas.drawLine(cx + r * 0.5f, cy - r * 0.5f, cx - r * 0.5f, cy + r * 0.5f, paint)
+                paint.strokeWidth = 1f
+            }
+            is FireballSkill -> {
+                // 火球：火焰形状（三层圆）
+                paint.color = 0xFFFF6F00.toInt()
+                canvas.drawCircle(cx, cy, r * 0.55f, paint)
+                paint.color = 0xFFFFEB3B.toInt()
+                canvas.drawCircle(cx, cy - r * 0.1f, r * 0.3f, paint)
+            }
+            is LightningSkill -> {
+                // 闪电：锯齿线
+                paint.strokeWidth = 4f
+                val pts = floatArrayOf(cx, cy - r * 0.6f, cx - r * 0.2f, cy - r * 0.1f,
+                    cx + r * 0.2f, cy - r * 0.1f, cx - r * 0.15f, cy + r * 0.5f)
+                canvas.drawLines(pts, paint)
+                paint.strokeWidth = 1f
+            }
+            is AuraSkill -> {
+                // 光环：三个同心圆
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f
+                canvas.drawCircle(cx, cy, r * 0.3f, paint)
+                canvas.drawCircle(cx, cy, r * 0.5f, paint)
+                canvas.drawCircle(cx, cy, r * 0.7f, paint)
+                paint.style = Paint.Style.FILL
+            }
+            is MissileSkill -> {
+                // 导弹：三角形+尾焰
+                val path = android.graphics.Path()
+                path.moveTo(cx, cy - r * 0.6f)
+                path.lineTo(cx - r * 0.3f, cy + r * 0.4f)
+                path.lineTo(cx + r * 0.3f, cy + r * 0.4f)
+                path.close()
+                canvas.drawPath(path, paint)
+                paint.color = 0xFFFF6F00.toInt()
+                canvas.drawCircle(cx, cy + r * 0.55f, r * 0.15f, paint)
+            }
+            is IceSpikeSkill -> {
+                // 冰锥：菱形
+                val path = android.graphics.Path()
+                path.moveTo(cx, cy - r * 0.6f)
+                path.lineTo(cx - r * 0.35f, cy)
+                path.lineTo(cx, cy + r * 0.6f)
+                path.lineTo(cx + r * 0.35f, cy)
+                path.close()
+                canvas.drawPath(path, paint)
+            }
+            is WhirlwindSkill -> {
+                // 旋风：螺旋线
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 3f
+                for (i in 0 until 3) {
+                    val startAngle = world.gameTime * 3 + i * 2.094
+                    val path = android.graphics.Path()
+                    path.moveTo(cx + cos(startAngle.toFloat()) * r * 0.2f, cy + sin(startAngle.toFloat()) * r * 0.2f)
+                    path.quadTo(cx + cos((startAngle + 1.5).toFloat()) * r * 0.5f,
+                        cy + sin((startAngle + 1.5).toFloat()) * r * 0.5f,
+                        cx + cos((startAngle + 3).toFloat()) * r * 0.7f,
+                        cy + sin((startAngle + 3).toFloat()) * r * 0.7f)
+                    canvas.drawPath(path, paint)
+                }
+                paint.style = Paint.Style.FILL
+            }
+            else -> {
+                canvas.drawCircle(cx, cy, r * 0.3f, paint)
+            }
+        }
+        paint.alpha = 255
+    }
+
+    private fun darkerColor(color: Int): Int {
+        val r = (color shr 16 and 0xFF) * 0.6f
+        val g = (color shr 8 and 0xFF) * 0.6f
+        val b = (color and 0xFF) * 0.6f
+        return 0xFF000000.toInt() or (r.toInt() shl 16) or (g.toInt() shl 8) or b.toInt()
+    }
+
     private fun drawLevelUp(canvas: Canvas) {
         val w = canvasWidth.toFloat()
         val h = canvasHeight.toFloat()
@@ -939,6 +1077,24 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         textPaint.textAlign = Paint.Align.CENTER
         canvas.drawText("升级！选择一项", w / 2f, h * 0.12f, textPaint)
         textPaint.isFakeBoldText = false
+
+        // 刷新按钮
+        val btnW = w * 0.25f
+        val btnH = h * 0.05f
+        val btnX = w / 2f - btnW / 2f
+        val btnY = h * 0.15f
+        val canReroll = world.rerollCount < world.maxReroll
+        paint.color = if (canReroll) 0xFF1976D2.toInt() else 0xFF424242.toInt()
+        canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 12f, 12f, paint)
+        paint.color = 0xFF64B5F6.toInt()
+        paint.strokeWidth = 2f
+        paint.style = Paint.Style.STROKE
+        canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 12f, 12f, paint)
+        paint.style = Paint.Style.FILL
+        textPaint.color = Color.WHITE
+        textPaint.textSize = h * 0.022f
+        textPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText("刷新 (${world.maxReroll - world.rerollCount}/${world.maxReroll})", w / 2f, btnY + btnH * 0.65f, textPaint)
 
         val cardW = (w - w * 0.08f) / 3f - w * 0.02f
         val cardH = h * 0.32f
@@ -960,8 +1116,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             val iconY = cardY + h * 0.07f
             when (option) {
                 is Skill -> {
-                    paint.color = option.iconColor
-                    canvas.drawCircle(cardX + cardW / 2, iconY, iconR, paint)
+                    drawSkillIcon(canvas, option, cardX + cardW / 2, iconY, iconR)
                     textPaint.color = Color.WHITE
                     textPaint.textSize = h * 0.024f
                     textPaint.isFakeBoldText = true
@@ -1025,40 +1180,320 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private fun drawMenu(canvas: Canvas) {
         val w = canvasWidth.toFloat()
         val h = canvasHeight.toFloat()
-        paint.color = 0xFF1A2E1A.toInt()
+        paint.color = 0xFF0D0D1A.toInt()
         canvas.drawRect(0f, 0f, w, h, paint)
 
-        textPaint.color = 0xFF00E676.toInt()
-        textPaint.textSize = w * 0.12f
+        textPaint.color = 0xFF00E5FF.toInt()
+        textPaint.textSize = w * 0.11f
         textPaint.isFakeBoldText = true
         textPaint.textAlign = Paint.Align.CENTER
-        canvas.drawText("割草传说", w / 2f, h * 0.32f, textPaint)
+        canvas.drawText("割草传说", w / 2f, h * 0.14f, textPaint)
         textPaint.isFakeBoldText = false
 
-        textPaint.color = 0xFFBDBDBD.toInt()
-        textPaint.textSize = h * 0.02f
-        canvas.drawText("发育型 Roguelike 割草游戏", w / 2f, h * 0.4f, textPaint)
-        canvas.drawText("虚拟摇杆移动，自动攻击，升级选技能", w / 2f, h * 0.44f, textPaint)
-        canvas.drawText("坚持 10 分钟击败最终 Boss 即可胜利", w / 2f, h * 0.48f, textPaint)
+        // 金币显示
+        textPaint.color = 0xFFFFD700.toInt()
+        textPaint.textSize = h * 0.025f
+        canvas.drawText("金币: ${Settings.coins}", w / 2f, h * 0.19f, textPaint)
 
-        // 开始按钮
-        val btnW = w * 0.6f
-        val btnH = h * 0.08f
+        // 开始游戏（大按钮）
+        val btnW = w * 0.7f
+        val btnH = h * 0.075f
         val btnX = (w - btnW) / 2
-        val btnY = h * 0.56f
-        paint.color = 0xFF4CAF50.toInt()
-        canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 16f, 16f, paint)
+        var btnY = h * 0.24f
+        paint.color = 0xFF00C853.toInt()
+        canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 14f, 14f, paint)
         textPaint.color = Color.WHITE
         textPaint.textSize = h * 0.03f
         textPaint.isFakeBoldText = true
         canvas.drawText("开始游戏", w / 2f, btnY + btnH * 0.65f, textPaint)
 
-        // 设置按钮
-        val setY = btnY + btnH + h * 0.02f
-        paint.color = 0xFF546E7A.toInt()
-        canvas.drawRoundRect(RectF(btnX, setY, btnX + btnW, setY + btnH), 16f, 16f, paint)
-        canvas.drawText("设置", w / 2f, setY + btnH * 0.65f, textPaint)
+        // 网格按钮（2列）
+        val gridBtnW = (w - w * 0.12f) / 2f
+        val gridBtnH = h * 0.065f
+        val gap = h * 0.015f
+        val menuItems = listOf(
+            "关卡选择" to 0xFF1976D2.toInt(),
+            "永久强化" to 0xFFF57F17.toInt(),
+            "角色选择" to 0xFF7B1FA2.toInt(),
+            "装备选择" to 0xFF00796B.toInt(),
+            "怪物图鉴" to 0xFFC62828.toInt(),
+            "武器图鉴" to 0xFFEF6C00.toInt(),
+            "技能图鉴" to 0xFF2E7D32.toInt(),
+            "设置" to 0xFF455A64.toInt()
+        )
         textPaint.isFakeBoldText = false
+        textPaint.textSize = h * 0.024f
+        btnY = h * 0.34f
+        for ((index, item) in menuItems.withIndex()) {
+            val col = index % 2
+            val row = index / 2
+            val gx = (w - gridBtnW * 2 - gap) / 2 + col * (gridBtnW + gap)
+            val gy = btnY + row * (gridBtnH + gap)
+            paint.color = item.second
+            canvas.drawRoundRect(RectF(gx, gy, gx + gridBtnW, gy + gridBtnH), 10f, 10f, paint)
+            textPaint.color = Color.WHITE
+            canvas.drawText(item.first, gx + gridBtnW / 2, gy + gridBtnH * 0.65f, textPaint)
+        }
+    }
+
+    // ============ 通用子页面头部 ============
+    private fun drawSubPageHeader(canvas: Canvas, title: String): Float {
+        val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+        paint.color = 0xFF0D0D1A.toInt()
+        canvas.drawRect(0f, 0f, w, h, paint)
+        textPaint.color = Color.WHITE
+        textPaint.textSize = w * 0.08f
+        textPaint.isFakeBoldText = true
+        textPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText(title, w / 2f, h * 0.09f, textPaint)
+        textPaint.isFakeBoldText = false
+        // 返回按钮
+        val backW = w * 0.18f; val backH = h * 0.05f
+        paint.color = 0xFF546E7A.toInt()
+        canvas.drawRoundRect(RectF(w * 0.03f, h * 0.03f, w * 0.03f + backW, h * 0.03f + backH), 8f, 8f, paint)
+        textPaint.color = Color.WHITE
+        textPaint.textSize = h * 0.022f
+        canvas.drawText("返回", w * 0.03f + backW / 2, h * 0.03f + backH * 0.65f, textPaint)
+        return h * 0.14f  // 返回内容起始Y
+    }
+
+    // ============ 关卡选择 ============
+    private fun drawLevelSelect(canvas: Canvas) {
+        val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+        val startY = drawSubPageHeader(canvas, "关卡选择")
+        val cardW = w * 0.85f; val cardH = h * 0.12f; val gap = h * 0.015f
+        for ((i, lvl) in GameConfig.LEVELS.withIndex()) {
+            val cy = startY + i * (cardH + gap)
+            val cx = (w - cardW) / 2
+            val selected = GameConfig.currentLevel.id == lvl.id
+            paint.color = if (selected) lvl.themeColor else 0xFF1A1A2E.toInt()
+            canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 12f, 12f, paint)
+            if (selected) {
+                paint.color = 0xFFFFD700.toInt()
+                paint.strokeWidth = 3f; paint.style = Paint.Style.STROKE
+                canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 12f, 12f, paint)
+                paint.style = Paint.Style.FILL
+            }
+            textPaint.color = Color.WHITE
+            textPaint.textSize = h * 0.028f
+            textPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText("${lvl.id}. ${lvl.name}", cx + w * 0.03f, cy + cardH * 0.4f, textPaint)
+            textPaint.textSize = h * 0.018f
+            textPaint.color = 0xFFBDBDBD.toInt()
+            canvas.drawText("血量×${lvl.enemyHpMult} 伤害×${lvl.enemyDmgMult} 奖励${lvl.rewardCoins}金币", cx + w * 0.03f, cy + cardH * 0.75f, textPaint)
+        }
+    }
+
+    // ============ 永久强化 ============
+    private fun drawMetaUpgrade(canvas: Canvas) {
+        val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+        val startY = drawSubPageHeader(canvas, "永久强化")
+        textPaint.color = 0xFFFFD700.toInt()
+        textPaint.textSize = h * 0.025f
+        textPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText("金币: ${Settings.coins}", w / 2f, startY + h * 0.02f, textPaint)
+        val upgrades = listOf(
+            Quad("攻击力", "每级+2攻击", Settings.metaAtk, "atk"),
+            Quad("最大生命", "每级+10生命", Settings.metaHp, "hp"),
+            Quad("攻击速度", "每级+0.05攻速", Settings.metaAtkSpd, "atkspd"),
+            Quad("移动速度", "每级+15移速", Settings.metaMovSpd, "movspd"),
+            Quad("拾取范围", "每级+20拾取", Settings.metaPickup, "pickup"),
+            Quad("暴击率", "每级+2%暴击", Settings.metaCrit, "crit")
+        )
+        val cardW = w * 0.9f; val cardH = h * 0.09f; val gap = h * 0.012f
+        for ((i, up) in upgrades.withIndex()) {
+            val cy = startY + h * 0.05f + i * (cardH + gap)
+            val cx = (w - cardW) / 2
+            paint.color = 0xFF1A1A2E.toInt()
+            canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 10f, 10f, paint)
+            textPaint.color = Color.WHITE
+            textPaint.textSize = h * 0.024f
+            textPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText("${up.first} Lv.${up.third}", cx + w * 0.03f, cy + cardH * 0.45f, textPaint)
+            textPaint.textSize = h * 0.016f
+            textPaint.color = 0xFFBDBDBD.toInt()
+            canvas.drawText(up.second, cx + w * 0.03f, cy + cardH * 0.78f, textPaint)
+            // 升级按钮
+            val btnW = w * 0.22f; val btnH = cardH * 0.6f
+            val btnX = cx + cardW - btnW - w * 0.02f
+            val btnY = cy + (cardH - btnH) / 2
+            val cost = Settings.metaUpgradeCost(up.fourth)
+            val canAfford = Settings.coins >= cost
+            paint.color = if (canAfford) 0xFFF57F17.toInt() else 0xFF424242.toInt()
+            canvas.drawRoundRect(RectF(btnX, btnY, btnX + btnW, btnY + btnH), 8f, 8f, paint)
+            textPaint.color = Color.WHITE
+            textPaint.textSize = h * 0.018f
+            textPaint.textAlign = Paint.Align.CENTER
+            canvas.drawText("升级 $cost", btnX + btnW / 2, btnY + btnH * 0.65f, textPaint)
+        }
+    }
+
+    // ============ 角色选择（框架） ============
+    private fun drawCharacters(canvas: Canvas) {
+        val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+        val startY = drawSubPageHeader(canvas, "角色选择")
+        val characters = listOf(
+            Triple("赛博忍者", "均衡型", "cyber_ninja"),
+            Triple("机甲战士", "高生命低速度", "mecha"),
+            Triple("暗影刺客", "高暴击低生命", "assassin")
+        )
+        val cardW = w * 0.85f; val cardH = h * 0.14f; val gap = h * 0.02f
+        for ((i, ch) in characters.withIndex()) {
+            val cy = startY + h * 0.02f + i * (cardH + gap)
+            val cx = (w - cardW) / 2
+            val selected = Settings.selectedCharacter == ch.third
+            paint.color = if (selected) 0xFF7B1FA2.toInt() else 0xFF1A1A2E.toInt()
+            canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 12f, 12f, paint)
+            if (selected) {
+                paint.color = 0xFFFFD700.toInt()
+                paint.strokeWidth = 3f; paint.style = Paint.Style.STROKE
+                canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 12f, 12f, paint)
+                paint.style = Paint.Style.FILL
+            }
+            textPaint.color = Color.WHITE
+            textPaint.textSize = h * 0.03f
+            textPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText(ch.first, cx + w * 0.04f, cy + cardH * 0.4f, textPaint)
+            textPaint.textSize = h * 0.02f
+            textPaint.color = 0xFFBDBDBD.toInt()
+            canvas.drawText(ch.second, cx + w * 0.04f, cy + cardH * 0.7f, textPaint)
+        }
+        textPaint.color = 0xFF9E9E9E.toInt()
+        textPaint.textSize = h * 0.018f
+        textPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText("（角色属性差异待实装，当前仅作选择框架）", w / 2f, h * 0.92f, textPaint)
+    }
+
+    // ============ 装备选择（框架） ============
+    private fun drawEquipment(canvas: Canvas) {
+        val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+        val startY = drawSubPageHeader(canvas, "装备选择")
+        val equipments = listOf(
+            Triple("无", "无加成", "none"),
+            Triple("能量核心", "攻击力+10%", "energy_core"),
+            Triple("生命护符", "最大生命+20%", "life_amulet"),
+            Triple("疾风之靴", "移动速度+15%", "wind_boots")
+        )
+        val cardW = w * 0.85f; val cardH = h * 0.12f; val gap = h * 0.018f
+        for ((i, eq) in equipments.withIndex()) {
+            val cy = startY + h * 0.02f + i * (cardH + gap)
+            val cx = (w - cardW) / 2
+            val selected = Settings.selectedLoadout == eq.third
+            paint.color = if (selected) 0xFF00796B.toInt() else 0xFF1A1A2E.toInt()
+            canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 12f, 12f, paint)
+            if (selected) {
+                paint.color = 0xFFFFD700.toInt()
+                paint.strokeWidth = 3f; paint.style = Paint.Style.STROKE
+                canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 12f, 12f, paint)
+                paint.style = Paint.Style.FILL
+            }
+            textPaint.color = Color.WHITE
+            textPaint.textSize = h * 0.028f
+            textPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText(eq.first, cx + w * 0.04f, cy + cardH * 0.45f, textPaint)
+            textPaint.textSize = h * 0.02f
+            textPaint.color = 0xFFBDBDBD.toInt()
+            canvas.drawText(eq.second, cx + w * 0.04f, cy + cardH * 0.75f, textPaint)
+        }
+        textPaint.color = 0xFF9E9E9E.toInt()
+        textPaint.textSize = h * 0.018f
+        textPaint.textAlign = Paint.Align.CENTER
+        canvas.drawText("（装备属性加成待实装，当前仅作选择框架）", w / 2f, h * 0.92f, textPaint)
+    }
+
+    // ============ 怪物图鉴 ============
+    private fun drawBestiary(canvas: Canvas) {
+        val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+        val startY = drawSubPageHeader(canvas, "怪物图鉴")
+        val monsters = listOf(
+            Triple("普通怪", "基础敌人，速度中等", "蓝灰色"),
+            Triple("快速怪", "移动速度快，血量低", "亮黄色"),
+            Triple("坦克怪", "血量高，移动慢", "红色"),
+            Triple("精英怪", "综合属性强，掉大量经验", "紫色"),
+            Triple("Boss", "最终Boss，超高血量", "橙红色")
+        )
+        val cardW = w * 0.9f; val cardH = h * 0.11f; val gap = h * 0.015f
+        for ((i, m) in monsters.withIndex()) {
+            val cy = startY + h * 0.02f + i * (cardH + gap)
+            val cx = (w - cardW) / 2
+            paint.color = 0xFF1A1A2E.toInt()
+            canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 10f, 10f, paint)
+            textPaint.color = Color.WHITE
+            textPaint.textSize = h * 0.026f
+            textPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText(m.first, cx + w * 0.03f, cy + cardH * 0.4f, textPaint)
+            textPaint.textSize = h * 0.018f
+            textPaint.color = 0xFFBDBDBD.toInt()
+            canvas.drawText(m.second, cx + w * 0.03f, cy + cardH * 0.72f, textPaint)
+            textPaint.color = 0xFF9E9E9E.toInt()
+            canvas.drawText("颜色: ${m.third}", cx + cardW - w * 0.25f, cy + cardH * 0.5f, textPaint)
+        }
+    }
+
+    // ============ 武器图鉴 ============
+    private fun drawWeapons(canvas: Canvas) {
+        val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+        val startY = drawSubPageHeader(canvas, "武器图鉴")
+        val weapons = listOf(
+            Triple("能量弹", "基础攻击，自动发射", "三联能量炮"),
+            Triple("飞刀", "环绕+扇形穿透", "万剑归宗"),
+            Triple("火球", "范围爆炸伤害", "陨石雨"),
+            Triple("闪电", "跳跃连锁攻击", "雷神之怒"),
+            Triple("灼烧光环", "持续范围伤害", "太阳风暴"),
+            Triple("追踪导弹", "自动追踪+小爆炸", "全屏导弹雨"),
+            Triple("冰锥术", "命中减速敌人", "绝对零度"),
+            Triple("旋风斩", "环绕风刃持续伤害", "风暴领主")
+        )
+        val cardW = w * 0.92f; val cardH = h * 0.085f; val gap = h * 0.01f
+        for ((i, wp) in weapons.withIndex()) {
+            val cy = startY + h * 0.015f + i * (cardH + gap)
+            val cx = (w - cardW) / 2
+            paint.color = 0xFF1A1A2E.toInt()
+            canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 8f, 8f, paint)
+            textPaint.color = 0xFF4FC3F7.toInt()
+            textPaint.textSize = h * 0.022f
+            textPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText(wp.first, cx + w * 0.025f, cy + cardH * 0.42f, textPaint)
+            textPaint.textSize = h * 0.016f
+            textPaint.color = 0xFFBDBDBD.toInt()
+            canvas.drawText(wp.second, cx + w * 0.025f, cy + cardH * 0.75f, textPaint)
+            textPaint.color = 0xFFFFD700.toInt()
+            textPaint.textAlign = Paint.Align.RIGHT
+            canvas.drawText("超武: ${wp.third}", cx + cardW - w * 0.025f, cy + cardH * 0.55f, textPaint)
+        }
+    }
+
+    // ============ 技能图鉴 ============
+    private fun drawSkillsInfo(canvas: Canvas) {
+        val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+        val startY = drawSubPageHeader(canvas, "技能图鉴")
+        val skills = listOf(
+            Triple("攻击力", "攻击力+5", "可叠加"),
+            Triple("攻击速度", "攻击速度+0.2", "可叠加"),
+            Triple("移动速度", "移动速度+30", "可叠加"),
+            Triple("最大生命", "最大生命+20并回满", "可叠加"),
+            Triple("拾取范围", "拾取范围+40", "可叠加"),
+            Triple("暴击率", "暴击率+5%", "可叠加"),
+            Triple("暴击伤害", "暴击伤害+30%", "可叠加"),
+            Triple("生命恢复", "每秒恢复2生命", "可叠加")
+        )
+        val cardW = w * 0.92f; val cardH = h * 0.08f; val gap = h * 0.012f
+        for ((i, sk) in skills.withIndex()) {
+            val cy = startY + h * 0.02f + i * (cardH + gap)
+            val cx = (w - cardW) / 2
+            paint.color = 0xFF1A1A2E.toInt()
+            canvas.drawRoundRect(RectF(cx, cy, cx + cardW, cy + cardH), 8f, 8f, paint)
+            textPaint.color = 0xFF69F0AE.toInt()
+            textPaint.textSize = h * 0.022f
+            textPaint.textAlign = Paint.Align.LEFT
+            canvas.drawText(sk.first, cx + w * 0.025f, cy + cardH * 0.45f, textPaint)
+            textPaint.textSize = h * 0.017f
+            textPaint.color = 0xFFBDBDBD.toInt()
+            canvas.drawText(sk.second, cx + w * 0.025f, cy + cardH * 0.78f, textPaint)
+            textPaint.color = 0xFF9E9E9E.toInt()
+            textPaint.textAlign = Paint.Align.RIGHT
+            canvas.drawText(sk.third, cx + cardW - w * 0.025f, cy + cardH * 0.55f, textPaint)
+        }
     }
 
     // ============ 设置界面 ============
@@ -1304,15 +1739,105 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                         handleSettingsTouch(x, y)
                     } else {
                         val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
-                        val btnW = w * 0.6f; val btnH = h * 0.08f
-                        val btnX = (w - btnW) / 2
-                        val btnY = h * 0.56f
+                        // 开始游戏
+                        val btnW = w * 0.7f; val btnH = h * 0.075f
+                        val btnX = (w - btnW) / 2; val btnY = h * 0.24f
                         if (x in btnX..(btnX + btnW) && y in btnY..(btnY + btnH)) {
                             world.startGame()
                         }
-                        val setY = btnY + btnH + h * 0.02f
-                        if (x in btnX..(btnX + btnW) && y in setY..(setY + btnH)) {
-                            inSettings = true
+                        // 网格按钮
+                        val gridBtnW = (w - w * 0.12f) / 2f
+                        val gridBtnH = h * 0.065f; val gap = h * 0.015f
+                        val gridStartY = h * 0.34f
+                        val menuStates = listOf(
+                            GameState.LEVEL_SELECT, GameState.META_UPGRADE,
+                            GameState.CHARACTERS, GameState.EQUIPMENT,
+                            GameState.BESTIARY, GameState.WEAPONS,
+                            GameState.SKILLS_INFO, GameState.MENU  // 设置用inSettings
+                        )
+                        for (i in 0 until 8) {
+                            val col = i % 2; val row = i / 2
+                            val gx = (w - gridBtnW * 2 - gap) / 2 + col * (gridBtnW + gap)
+                            val gy = gridStartY + row * (gridBtnH + gap)
+                            if (x in gx..(gx + gridBtnW) && y in gy..(gy + gridBtnH)) {
+                                if (i == 7) { inSettings = true }  // 设置
+                                else { world.state = menuStates[i] }
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+            // 子页面通用触摸处理
+            GameState.LEVEL_SELECT, GameState.META_UPGRADE, GameState.CHARACTERS,
+            GameState.EQUIPMENT, GameState.BESTIARY, GameState.WEAPONS, GameState.SKILLS_INFO -> {
+                if (action == MotionEvent.ACTION_DOWN) {
+                    val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+                    // 返回按钮
+                    val backW = w * 0.18f; val backH = h * 0.05f
+                    if (x in (w * 0.03f)..(w * 0.03f + backW) && y in (h * 0.03f)..(h * 0.03f + backH)) {
+                        world.state = GameState.MENU
+                        return true
+                    }
+                    // 关卡选择：点击关卡
+                    if (world.state == GameState.LEVEL_SELECT) {
+                        val startY = h * 0.14f
+                        val cardW = w * 0.85f; val cardH = h * 0.12f; val gap = h * 0.015f
+                        for ((i, lvl) in GameConfig.LEVELS.withIndex()) {
+                            val cy = startY + i * (cardH + gap)
+                            val cx = (w - cardW) / 2
+                            if (x in cx..(cx + cardW) && y in cy..(cy + cardH)) {
+                                GameConfig.currentLevel = lvl
+                                playSound("levelup")
+                                break
+                            }
+                        }
+                    }
+                    // 永久强化：点击升级按钮
+                    if (world.state == GameState.META_UPGRADE) {
+                        val startY = h * 0.14f + h * 0.05f
+                        val cardW = w * 0.9f; val cardH = h * 0.09f; val gap = h * 0.012f
+                        val types = listOf("atk", "hp", "atkspd", "movspd", "pickup", "crit")
+                        for ((i, type) in types.withIndex()) {
+                            val cy = startY + i * (cardH + gap)
+                            val cx = (w - cardW) / 2
+                            val btnW = w * 0.22f; val btnH = cardH * 0.6f
+                            val btnX = cx + cardW - btnW - w * 0.02f
+                            val btnY = cy + (cardH - btnH) / 2
+                            if (x in btnX..(btnX + btnW) && y in btnY..(btnY + btnH)) {
+                                if (Settings.upgradeMeta(type)) playSound("levelup")
+                                break
+                            }
+                        }
+                    }
+                    // 角色选择
+                    if (world.state == GameState.CHARACTERS) {
+                        val startY = h * 0.14f + h * 0.02f
+                        val cardW = w * 0.85f; val cardH = h * 0.14f; val gap = h * 0.02f
+                        val chars = listOf("cyber_ninja", "mecha", "assassin")
+                        for ((i, ch) in chars.withIndex()) {
+                            val cy = startY + i * (cardH + gap)
+                            val cx = (w - cardW) / 2
+                            if (x in cx..(cx + cardW) && y in cy..(cy + cardH)) {
+                                Settings.selectCharacter(ch)
+                                playSound("levelup")
+                                break
+                            }
+                        }
+                    }
+                    // 装备选择
+                    if (world.state == GameState.EQUIPMENT) {
+                        val startY = h * 0.14f + h * 0.02f
+                        val cardW = w * 0.85f; val cardH = h * 0.12f; val gap = h * 0.018f
+                        val eqs = listOf("none", "energy_core", "life_amulet", "wind_boots")
+                        for ((i, eq) in eqs.withIndex()) {
+                            val cy = startY + i * (cardH + gap)
+                            val cx = (w - cardW) / 2
+                            if (x in cx..(cx + cardW) && y in cy..(cy + cardH)) {
+                                Settings.selectLoadout(eq)
+                                playSound("levelup")
+                                break
+                            }
                         }
                     }
                 }
@@ -1320,6 +1845,16 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             GameState.LEVEL_UP -> {
                 if (action == MotionEvent.ACTION_DOWN) {
                     val w = canvasWidth.toFloat(); val h = canvasHeight.toFloat()
+                    // 刷新按钮点击
+                    val btnW = w * 0.25f
+                    val btnH = h * 0.05f
+                    val btnX = w / 2f - btnW / 2f
+                    val btnY = h * 0.15f
+                    if (x in btnX..(btnX + btnW) && y in btnY..(btnY + btnH)) {
+                        world.rerollOptions()
+                        return true
+                    }
+                    // 升级卡片点击
                     val cardW = (w - w * 0.08f) / 3f - w * 0.02f
                     val cardH = h * 0.32f
                     val cardY = (h - cardH) / 2f

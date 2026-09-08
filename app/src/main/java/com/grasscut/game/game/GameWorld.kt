@@ -5,11 +5,13 @@ import kotlin.math.sin
 import kotlin.math.hypot
 import kotlin.random.Random
 
-enum class GameState { MENU, PLAYING, PAUSED, LEVEL_UP, GAME_OVER, VICTORY }
+enum class GameState { MENU, PLAYING, PAUSED, LEVEL_UP, GAME_OVER, VICTORY,
+    LEVEL_SELECT, BESTIARY, WEAPONS, SKILLS_INFO, EQUIPMENT, CHARACTERS, META_UPGRADE }
 
 class GameWorld {
     var state = GameState.MENU
     var gameTime = 0f
+    var gameDuration = GameConfig.GAME_DURATION  // 可被关卡覆盖
     val player = Player(GameConfig.MAP_WIDTH / 2, GameConfig.MAP_HEIGHT / 2)
 
     val enemies = mutableListOf<Enemy>()
@@ -47,6 +49,17 @@ class GameWorld {
 
     // 升级选项
     var levelUpOptions = listOf<Any>()
+    // 技能刷新
+    var rerollCount = 0
+    val maxReroll = 3
+
+    fun rerollOptions() {
+        if (rerollCount < maxReroll) {
+            rerollCount++
+            generateLevelUpOptions()
+            playSound("levelup")
+        }
+    }
 
     // 光环效果
     var auraActive = false
@@ -125,6 +138,7 @@ class GameWorld {
     fun startGame() {
         state = GameState.PLAYING
         gameTime = 0f
+        gameDuration = GameConfig.currentLevel.duration  // 应用关卡时长
         player.x = GameConfig.MAP_WIDTH / 2
         player.y = GameConfig.MAP_HEIGHT / 2
         player.hp = player.effectiveMaxHp
@@ -138,10 +152,19 @@ class GameWorld {
         player.atkBonus = 0f; player.atkSpeedBonus = 0f
         player.moveSpeedBonus = 0f; player.pickupRangeBonus = 0f
         player.maxHpBonus = 0f; player.critChance = 0f
+        // 应用永久升级（局外成长）
+        player.atkBonus = Settings.metaAtk * 2f
+        player.maxHpBonus = Settings.metaHp * 10f
+        player.atkSpeedBonus = Settings.metaAtkSpd * 0.05f
+        player.moveSpeedBonus = Settings.metaMovSpd * 15f
+        player.pickupRangeBonus = Settings.metaPickup * 20f
+        player.critChance = Settings.metaCrit * 0.02f
+        player.hp = player.effectiveMaxHp
         enemies.clear(); bullets.clear(); xpGems.clear()
         floatingTexts.clear(); particles.clear(); lightningBolts.clear(); soundEvents.clear()
         explosions.clear(); orbitingKnives.clear(); meteorStrikes.clear(); whirlwindBlades.clear()
         voiceEvents.clear()
+        rerollCount = 0
         spawnTimer = 0f; eliteWaveTimer = 0f; bossSpawned = false; finalWaveAnnounced = false
         auraActive = false; auraEvolved = false
         timeScale = 1f; slowMoDuration = 0f
@@ -180,9 +203,10 @@ class GameWorld {
         if (voiceCooldown > 0) voiceCooldown -= sdt
 
         // 胜利条件
-        if (gameTime >= GameConfig.GAME_DURATION && enemies.isEmpty()) {
+        if (gameTime >= gameDuration && enemies.isEmpty()) {
             state = GameState.VICTORY
             playSound("victory")
+            Settings.addCoins(GameConfig.currentLevel.rewardCoins + player.kills / 5)
             return
         }
 
@@ -211,6 +235,7 @@ class GameWorld {
         if (!player.alive) {
             state = GameState.GAME_OVER
             playSound("death")
+            Settings.addCoins(player.kills / 10)  // 失败也给少量金币
         }
     }
 
@@ -411,10 +436,10 @@ class GameWorld {
                     player.takeDamage(e.damage)
                     playSound("hurt")
                     hurtFlashTimer = 0.3f
-                    if (random.nextFloat() < 0.15f) playVoice("hurt")
+                    if (random.nextFloat() < 0.15f) playVoice("voice_hurt")
                     // 低血量语音
                     if (player.hp < player.effectiveMaxHp * 0.3f && random.nextFloat() < 0.2f) {
-                        playVoice("lowhp")
+                        playVoice("voice_lowhp")
                     }
                 }
                 e.attackCooldown = 0.8f
@@ -482,7 +507,7 @@ class GameWorld {
                     generateLevelUpOptions()
                     state = GameState.LEVEL_UP
                     playSound("levelup")
-                    playVoice("levelup")
+                    playVoice("voice_levelup")
                 } else if (pickupSoundTimer <= 0) {
                     playSound("pickup")
                     pickupSoundTimer = 0.12f
@@ -539,7 +564,7 @@ class GameWorld {
 
     private fun spawnEnemies(dt: Float) {
         // 到10分钟停止生成敌人，进入清场阶段
-        if (gameTime >= GameConfig.GAME_DURATION) {
+        if (gameTime >= gameDuration) {
             if (!finalWaveAnnounced) {
                 finalWaveAnnounced = true
                 playSound("warning")
@@ -595,7 +620,14 @@ class GameWorld {
         var y = player.y + sin(angle) * dist
         x = x.coerceIn(50f, GameConfig.MAP_WIDTH - 50f)
         y = y.coerceIn(50f, GameConfig.MAP_HEIGHT - 50f)
-        enemies.add(Enemy(x, y, type, gameTime))
+        val enemy = Enemy(x, y, type, gameTime)
+        // 应用关卡倍率
+        val lvl = GameConfig.currentLevel
+        enemy.maxHp *= lvl.enemyHpMult
+        enemy.hp = enemy.maxHp
+        enemy.damage *= lvl.enemyDmgMult
+        enemy.speed *= lvl.enemySpdMult
+        enemies.add(enemy)
     }
 
     fun onEnemyKilled(e: Enemy) {
@@ -603,10 +635,10 @@ class GameWorld {
         // 战斗语音：普通敌人1%概率（割草杀太多，不能太频繁），精英/Boss 15%概率
         when (e.type) {
             EnemyType.BOSS, EnemyType.ELITE -> {
-                if (random.nextFloat() < 0.15f) playVoice("kill")
+                if (random.nextFloat() < 0.15f) playVoice("voice_kill")
             }
             else -> {
-                if (random.nextFloat() < 0.01f) playVoice("attack")
+                if (random.nextFloat() < 0.01f) playVoice("voice_attack")
             }
         }
         // 掉经验宝石
@@ -705,9 +737,17 @@ class GameWorld {
         val options = mutableListOf<Any>()
         val allSkills = listOf(KnifeSkill(), FireballSkill(), LightningSkill(), AuraSkill(), MissileSkill(), IceSpikeSkill(), WhirlwindSkill())
 
-        // 可升级的已有技能
-        val upgradableSkills = player.skills.filter { it.canUpgrade() && it !is BasicAttackSkill }
-        for (s in upgradableSkills) options.add(s)
+        // 可升级的已有技能（等级越低权重越高，更容易刷到满级进化）
+        val upgradableSkills = player.skills.filter { it.canUpgrade() }
+        for (s in upgradableSkills) {
+            // 等级1-3重复3次，4-6重复2次，7-8重复1次
+            val weight = when {
+                s.level <= 3 -> 3
+                s.level <= 6 -> 2
+                else -> 1
+            }
+            repeat(weight) { options.add(s) }
+        }
 
         // 未拥有的新技能
         val ownedNames = player.skills.map { it.name }.toSet()
@@ -757,22 +797,13 @@ class GameWorld {
         for (skill in player.skills) {
             if (skill.evolved) continue
             if (skill.level < 8) continue
-            val canEvolve = when (skill) {
-                is BasicAttackSkill -> player.atkSpeedBonus >= 3f
-                is KnifeSkill -> player.atkBonus >= 30f
-                is FireballSkill -> player.pickupRangeBonus >= 30f
-                is LightningSkill -> player.critChance >= 0.15f
-                is AuraSkill -> player.maxHpBonus >= 30f
-                is MissileSkill -> player.atkBonus >= 25f
-                is IceSpikeSkill -> player.pickupRangeBonus >= 25f
-                is WhirlwindSkill -> player.moveSpeedBonus >= 60f
-                else -> false
-            }
+            // 满级8级即可进化（不再要求被动达标，降低门槛）
+            val canEvolve = skill.level >= 8
             if (canEvolve) {
                 skill.evolved = true
                 evolutionNotice = skill.evolutionName to System.currentTimeMillis()
                 playSound("levelup")
-                playVoice("ultimate")
+                playVoice("voice_ultimate")
                 triggerFlash(0xFF00E5FF.toInt(), 0.2f)
                 triggerShake(8f, 0.3f)
             }

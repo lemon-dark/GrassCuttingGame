@@ -15,6 +15,33 @@ object GameConfig {
     const val PLAYER_PICKUP_RANGE = 150f
     const val PLAYER_RADIUS = 84f
 
+    // 视觉缩放（只影响渲染大小，不影响碰撞逻辑）
+    const val VISUAL_PLAYER_SCALE = 2.0f   // 玩家再大1倍
+    const val VISUAL_ENEMY_SCALE = 1.5f    // 怪物统一大50%
+
+    // 关卡模式
+    data class Level(
+        val id: Int,
+        val name: String,
+        val theme: String,        // 主题：cyber_city / neon_forest / space_station / volcano
+        val themeColor: Int,      // 主题色（用于背景 tint）
+        val enemyHpMult: Float,   // 敌人血量倍率
+        val enemyDmgMult: Float,  // 敌人伤害倍率
+        val enemySpdMult: Float,  // 敌人速度倍率
+        val spawnRateMult: Float, // 生成速率倍率
+        val duration: Float,      // 关卡时长（秒）
+        val rewardCoins: Int      // 通关奖励金币
+    )
+
+    val LEVELS = listOf(
+        Level(1, "霓虹都市", "cyber_city", 0xFF1A237E.toInt(), 1.0f, 1.0f, 1.0f, 1.0f, 600f, 100),
+        Level(2, "数据森林", "neon_forest", 0xFF1B5E20.toInt(), 1.3f, 1.2f, 1.1f, 1.15f, 600f, 150),
+        Level(3, "太空站", "space_station", 0xFF0D47A1.toInt(), 1.6f, 1.4f, 1.2f, 1.3f, 600f, 200),
+        Level(4, "熔岩核心", "volcano", 0xFFBF360C.toInt(), 2.0f, 1.6f, 1.3f, 1.5f, 600f, 300),
+        Level(5, "量子深渊", "quantum", 0xFF4A148C.toInt(), 2.5f, 2.0f, 1.5f, 1.8f, 600f, 500)
+    )
+    var currentLevel: Level = LEVELS[0]
+
     // 经验曲线（降低升级所需经验，加快成长）
     fun xpToNext(level: Int): Int = (4 + level * level * 2).toInt()
 
