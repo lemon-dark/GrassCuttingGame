@@ -8,12 +8,17 @@ import { EquipmentScene } from './scenes/EquipmentScene.js';
 import { BestiaryScene, SkillBestiaryScene } from './scenes/BestiaryScenes.js';
 import { SettingsScene } from './scenes/SettingsScene.js';
 
+// 关键：设置文本对象的默认渲染分辨率为设备像素比
+// 这样文字会清晰锐利，且不会影响游戏对象的坐标系统
+const dpr = window.devicePixelRatio || 1;
+Phaser.GameObjects.Text.DEFAULT_RESOLUTION = dpr;
+console.log('设备像素比:', dpr, '文本默认分辨率已设置');
+
 const config = {
     type: Phaser.AUTO,
     parent: 'game-container',
     width: window.innerWidth,
     height: window.innerHeight,
-    resolution: window.devicePixelRatio || 1, // 关键：按设备像素比渲染，文字清晰
     scene: [MenuScene, GameScene, LevelScene, UpgradeScene, CharacterScene, EquipmentScene, BestiaryScene, SkillBestiaryScene, SettingsScene],
     physics: {
         default: 'arcade',
@@ -28,9 +33,8 @@ const config = {
     },
     render: {
         antialias: true,
-        antialiasGL: true, // WebGL抗锯齿
         pixelArt: false,
-        roundPixels: false, // 文字渲染需要关闭圆整像素，否则可能模糊
+        roundPixels: true,
         powerPreference: 'high-performance'
     }
 };
