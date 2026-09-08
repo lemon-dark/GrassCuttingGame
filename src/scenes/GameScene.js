@@ -402,6 +402,11 @@ export class GameScene extends Phaser.Scene {
             
             this.player.update(dt);
             
+            // 更新所有技能（关键：之前缺失，导致所有技能都没有实装）
+            for (const skill of this.player.skills) {
+                skill.update(this.player, this, dt);
+            }
+            
             // 低血量语音（血量低于30%时触发，带8秒冷却）
             if (this.player.hp / this.player.maxHp < 0.3) {
                 soundManager.playVoice('lowhp');
@@ -1146,11 +1151,16 @@ export class GameScene extends Phaser.Scene {
     }
     
     closeLevelUpUI() {
-        if (this.levelUpBg) this.levelUpBg.destroy();
-        if (this.rerollBtn) this.rerollBtn.destroy();
-        if (this.rerollText) this.rerollText.destroy();
+        // 先清除卡片（会清除卡片和卡片文字）
         this.clearLevelUpCards();
-        this.children.list.filter(c => c.depth >= 3000).forEach(c => c.destroy());
+        // 再清除所有 depth >= 3000 的剩余对象（背景、按钮等）
+        // 注意：clearLevelUpCards 已经清除了卡片，这里不会重复销毁
+        this.children.list.filter(c => c.depth >= 3000 && c.active).forEach(c => c.destroy());
+        // 清空引用
+        this.levelUpBg = null;
+        this.rerollBtn = null;
+        this.rerollText = null;
+        this.levelUpCards = [];
     }
     
     updateHUD() {
