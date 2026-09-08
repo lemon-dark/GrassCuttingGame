@@ -278,7 +278,7 @@ class GameWorld {
             player.animTimer += dt
             if (player.animTimer >= 0.15f) {
                 player.animTimer = 0f
-                player.animFrame = (player.animFrame + 1) % 4
+                player.animFrame = (player.animFrame + 1) % 8
             }
         } else {
             // 站立时回到第0帧（呼吸感）

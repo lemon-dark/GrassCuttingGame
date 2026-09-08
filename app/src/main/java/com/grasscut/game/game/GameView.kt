@@ -137,7 +137,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     }
 
     // 角色贴图渲染（保持宽高比，居中）
-    private fun drawCharacter(canvas: Canvas, sheet: Bitmap?, x: Float, y: Float, radius: Float, frameIndex: Int = 0, flipX: Boolean = false, alpha: Int = 255) {
+    private fun drawCharacter(canvas: Canvas, sheet: Bitmap?, x: Float, y: Float, radius: Float, frameIndex: Int = 0, flipX: Boolean = false, alpha: Int = 255, frameCount: Int = 4) {
         if (sheet == null) {
             paint.alpha = alpha
             paint.color = 0xFF81C784.toInt()
@@ -145,9 +145,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             paint.alpha = 255
             return
         }
-        // sprite sheet 是4帧横排
-        val frameWidth = sheet.width / 4
-        val frame = frameIndex.coerceIn(0, 3)
+        val frameWidth = sheet.width / frameCount
+        val frame = frameIndex.coerceIn(0, frameCount - 1)
         val size = radius * 2.3f
         val ratio = sheet.height.toFloat() / frameWidth.toFloat()
         val w = size
@@ -540,7 +539,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         val p = world.player
         val alpha = if (p.invincibleTimer > 0 && (p.invincibleTimer * 20).toInt() % 2 == 0) 100 else 255
         val visualRadius = p.radius * GameConfig.VISUAL_PLAYER_SCALE
-        drawCharacter(canvas, playerSheetBmp, p.x, p.y, visualRadius, p.animFrame, p.facingRight, alpha)
+        drawCharacter(canvas, playerSheetBmp, p.x, p.y, visualRadius, p.animFrame, p.facingRight, alpha, frameCount = 8)
     }
 
     // ============ 子弹 ============
