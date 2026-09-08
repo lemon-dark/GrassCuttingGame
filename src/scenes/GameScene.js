@@ -559,6 +559,28 @@ export class GameScene extends Phaser.Scene {
             
             // 更新大招冷却
             this.extraFeatures.updateUltimate(dt);
+            
+            // 剑刃风暴大招效果（持续伤害周围敌人）
+            if (this.bladeStormActive) {
+                this.bladeStormTimer -= dt;
+                if (this.bladeStormTimer <= 0) {
+                    this.bladeStormActive = false;
+                } else {
+                    // 每0.2秒对周围200px内敌人造成80伤害
+                    this.bladeStormTick = (this.bladeStormTick || 0) + dt;
+                    if (this.bladeStormTick >= 0.2) {
+                        this.bladeStormTick = 0;
+                        for (const e of this.enemies) {
+                            if (!e.alive) continue;
+                            if (Math.hypot(e.x - this.player.x, e.y - this.player.y) < 200) {
+                                e.takeDamage(80);
+                                this.addFloatingText(e.x, e.y - e.radius, '80', 0x81C784, 16);
+                            }
+                        }
+                    }
+                }
+            }
+            
             if (this.ultimateCooldownText) {
                 if (this.extraFeatures.ultimateReady) {
                     this.ultimateCooldownText.setText('');

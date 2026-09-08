@@ -79,7 +79,7 @@ export class ExtraFeaturesManager {
                 if (enemy.alive) {
                     scene.time.delayedCall(Math.random() * 500, () => {
                         if (enemy.alive) {
-                            scene.lightningBolts.push({ x1: enemy.x, y1: enemy.y - 200, x2: enemy.x, y2: enemy.y, life: 0.3, maxLife: 0.3 });
+                            scene.lightningBolts.push({ x1: enemy.x, y1: enemy.y - 200, x2: enemy.x, y2: enemy.y, life: 0.3, maxLife: 0.3, color: 0x00BCD4 });
                             enemy.takeDamage(ult.damage);
                         }
                     });
