@@ -1,7 +1,10 @@
 // 全局游戏状态管理器（跨场景共享 + localStorage持久化）
+import { ProgressionManager } from '../systems/ProgressionSystem.js';
+
 export class GameState {
     constructor() {
         this.load();
+        this.progression = new ProgressionManager(this);
     }
     
     // 默认值

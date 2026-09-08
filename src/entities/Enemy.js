@@ -26,6 +26,33 @@ export class Enemy {
         this.slowFactor = 1;
         this.isMoving = true;
         
+        // 特殊能力系统
+        this.abilities = [];
+        this.abilityCooldowns = {};
+        this.shieldHp = 0;
+        this.exploding = false;
+        this.explodeTimer = 0;
+        
+        // 根据怪物类型分配特殊能力
+        if (type === 'FAST') {
+            this.abilities.push('explode'); // 自爆
+        } else if (type === 'TANK') {
+            this.abilities.push('shield'); // 护盾
+            this.shieldHp = this.maxHp * 0.3;
+        } else if (type === 'ELITE') {
+            const eliteAbilities = ['ranged', 'heal', 'split', 'shield'];
+            this.abilities.push(eliteAbilities[Math.floor(Math.random() * eliteAbilities.length)]);
+            if (this.abilities.includes('shield')) this.shieldHp = this.maxHp * 0.4;
+        } else if (type === 'BOSS') {
+            this.abilities = ['ranged', 'heal', 'shield', 'summon'];
+            this.shieldHp = this.maxHp * 0.5;
+        }
+        
+        // 初始化能力冷却
+        for (const ab of this.abilities) {
+            this.abilityCooldowns[ab] = Math.random() * 3;
+        }
+        
         // 纹理类型映射
         const textureMap = {
             'NORMAL': 'enemy_normal',
@@ -73,9 +100,14 @@ export class Enemy {
         
         if (dist > 0) {
             const speed = this.speed * this.slowFactor;
-            this.x += (dx / dist) * speed * dt;
-            this.y += (dy / dist) * speed * dt;
+            // 自爆怪接近玩家时加速
+            const speedMult = this.abilities.includes('explode') && dist < 150 ? 1.8 : 1;
+            this.x += (dx / dist) * speed * speedMult * dt;
+            this.y += (dy / dist) * speed * speedMult * dt;
         }
+        
+        // 特殊能力处理
+        this.updateAbilities(dt, player, dist);
         
         // 受击闪烁
         if (this.hitFlash > 0) {
@@ -127,11 +159,84 @@ export class Enemy {
         }
     }
     
+    updateAbilities(dt, player, dist) {
+        // 冷却更新
+        for (const ab in this.abilityCooldowns) {
+            this.abilityCooldowns[ab] -= dt;
+        }
+        
+        // 远程攻击
+        if (this.abilities.includes('ranged') && this.abilityCooldowns.ranged <= 0 && dist < 400 && dist > 80) {
+            this.abilityCooldowns.ranged = 2.5;
+            if (this.scene.spawnEnemyBullet) {
+                this.scene.spawnEnemyBullet(this.x, this.y, player.x, player.y, this.damage * 0.5);
+            }
+        }
+        
+        // 治疗
+        if (this.abilities.includes('heal') && this.abilityCooldowns.heal <= 0 && this.hp < this.maxHp * 0.7) {
+            this.abilityCooldowns.heal = 4;
+            this.hp = Math.min(this.maxHp, this.hp + this.maxHp * 0.15);
+            // 治疗特效
+            if (this.scene.addFloatingText) {
+                this.scene.addFloatingText(this.x, this.y - 30, '+' + Math.floor(this.maxHp * 0.15), '#66BB6A');
+            }
+        }
+        
+        // 自爆
+        if (this.abilities.includes('explode') && dist < 60 && !this.exploding) {
+            this.exploding = true;
+            this.explodeTimer = 0.8;
+            this.isMoving = false;
+        }
+        if (this.exploding) {
+            this.explodeTimer -= dt;
+            // 闪烁警告
+            this.sprite.setAlpha(0.5 + Math.sin(Date.now() / 50) * 0.5);
+            if (this.explodeTimer <= 0) {
+                // 爆炸
+                if (this.scene.triggerExplosion && dist < 100) {
+                    player.takeDamage(this.damage * 2);
+                    this.scene.triggerExplosion(this.x, this.y, 80, 0xFF5722);
+                }
+                this.hp = 0;
+                this.alive = false;
+            }
+        }
+        
+        // 召唤（BOSS）
+        if (this.abilities.includes('summon') && this.abilityCooldowns.summon <= 0) {
+            this.abilityCooldowns.summon = 8;
+            if (this.scene.spawnEnemy) {
+                for (let i = 0; i < 3; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    this.scene.spawnEnemyAt(this.x + Math.cos(angle) * 80, this.y + Math.sin(angle) * 80, 'FAST');
+                }
+            }
+        }
+    }
+    
     takeDamage(amount) {
+        // 护盾先吸收伤害
+        if (this.shieldHp > 0) {
+            const absorbed = Math.min(this.shieldHp, amount);
+            this.shieldHp -= absorbed;
+            amount -= absorbed;
+            if (this.shieldHp <= 0) {
+                this.shieldHp = 0;
+            }
+        }
         this.hp -= amount;
         this.hitFlash = 0.1;
         if (this.hp <= 0) {
             this.alive = false;
+            // 分裂能力：死亡时分裂成小怪物
+            if (this.abilities.includes('split') && this.scene.spawnEnemyAt) {
+                for (let i = 0; i < 2; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    this.scene.spawnEnemyAt(this.x + Math.cos(angle) * 30, this.y + Math.sin(angle) * 30, 'NORMAL');
+                }
+            }
             return true;
         }
         return false;

@@ -7,6 +7,7 @@ import { CharacterScene } from './scenes/CharacterScene.js';
 import { EquipmentScene } from './scenes/EquipmentScene.js';
 import { BestiaryScene, SkillBestiaryScene } from './scenes/BestiaryScenes.js';
 import { SettingsScene } from './scenes/SettingsScene.js';
+import { ProgressionScene } from './scenes/ProgressionScene.js';
 
 // 关键：设置文本对象的默认渲染分辨率为设备像素比
 // 这样文字会清晰锐利，且不会影响游戏对象的坐标系统
@@ -19,7 +20,7 @@ const config = {
     parent: 'game-container',
     width: window.innerWidth,
     height: window.innerHeight,
-    scene: [MenuScene, GameScene, LevelScene, UpgradeScene, CharacterScene, EquipmentScene, BestiaryScene, SkillBestiaryScene, SettingsScene],
+    scene: [MenuScene, GameScene, LevelScene, UpgradeScene, CharacterScene, EquipmentScene, BestiaryScene, SkillBestiaryScene, SettingsScene, ProgressionScene],
     physics: {
         default: 'arcade',
         arcade: {

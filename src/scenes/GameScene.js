@@ -4,6 +4,8 @@ import { Player } from '../entities/Player.js';
 import { Enemy } from '../entities/Enemy.js';
 import { Bullet, XpGem } from '../entities/Bullet.js';
 import { Item, ItemTypes, BuffManager } from '../entities/Item.js';
+import { RelicTypes, RelicManager } from '../entities/Relic.js';
+import { ExtraFeaturesManager, UltimateSkills, ShopItems } from '../systems/ExtraFeatures.js';
 import { SkillFactory, KnifeSkill, FireballSkill, LightningSkill, AuraSkill, MissileSkill, IceSpikeSkill, WhirlwindSkill } from '../skills/Skills.js';
 import { gameState } from '../state/GameState.js';
 import { soundManager } from '../audio/SoundManager.js';
@@ -59,14 +61,22 @@ export class GameScene extends Phaser.Scene {
         
         this.enemies = [];
         this.bullets = [];
+        this.enemyBullets = [];
         this.xpGems = [];
         this.items = [];
+        this.chests = [];
         this.particles = [];
         this.floatingTexts = [];
         this.lightningBolts = [];
         this.explosions = [];
         this.buffManager = new BuffManager();
+        this.relicManager = new RelicManager();
+        this.extraFeatures = new ExtraFeaturesManager(this);
+        this.gold = 0;
         this.damageStats = { total: 0, bySkill: {}, startTime: 0 };
+        // 波次事件
+        this.waveEvents = [];
+        this.nextWaveTime = 120; // 2分钟后第一次波次
         
         this.player = new Player(this, GameConfig.MAP_WIDTH / 2, GameConfig.MAP_HEIGHT / 2);
         
@@ -132,6 +142,33 @@ export class GameScene extends Phaser.Scene {
         this.pauseBtn.on('pointerdown', () => {
             soundManager.play('click');
             this.togglePause();
+        });
+        
+        // 大招按钮（右下角）
+        this.ultimateBtn = this.add.circle(w - 60, this.scale.height - 80, 35, 0x9C27B0, 0.8)
+            .setScrollFactor(0).setDepth(999)
+            .setStrokeStyle(3, 0xFFD700, 0.8)
+            .setInteractive({ useHandCursor: true });
+        this.ultimateText = this.add.text(w - 60, this.scale.height - 80, '☄️', { fontSize: '24px' })
+            .setScrollFactor(0).setDepth(1000).setOrigin(0.5);
+        this.ultimateCooldownText = this.add.text(w - 60, this.scale.height - 80, '', { fontSize: '14px', color: '#FFFFFF', fontWeight: 'bold' })
+            .setScrollFactor(0).setDepth(1001).setOrigin(0.5);
+        this.ultimateBtn.on('pointerdown', () => {
+            if (this.extraFeatures.castUltimate()) {
+                soundManager.play('boss');
+            }
+        });
+        
+        // 商店按钮（大招按钮上方）
+        this.shopBtn = this.add.rectangle(w - 60, this.scale.height - 140, 50, 40, 0xFF9800, 0.8)
+            .setScrollFactor(0).setDepth(999)
+            .setStrokeStyle(2, 0xFFD700, 0.5)
+            .setInteractive({ useHandCursor: true });
+        this.add.text(w - 60, this.scale.height - 140, '🛒', { fontSize: '20px' })
+            .setScrollFactor(0).setDepth(1000).setOrigin(0.5);
+        this.shopBtn.on('pointerdown', () => {
+            soundManager.play('click');
+            this.showShop();
         });
     }
     
@@ -390,6 +427,31 @@ export class GameScene extends Phaser.Scene {
                 }
             }
             
+            // 更新敌人子弹
+            for (const bullet of this.enemyBullets) {
+                if (!bullet.alive) continue;
+                bullet.x += bullet.vx * dt;
+                bullet.y += bullet.vy * dt;
+                bullet.graphics.setPosition(bullet.x, bullet.y);
+                // 碰撞玩家
+                if (Math.hypot(bullet.x - this.player.x, bullet.y - this.player.y) < bullet.radius + this.player.radius) {
+                    bullet.alive = false;
+                    bullet.graphics.destroy();
+                    const dead = this.player.takeDamage(bullet.damage);
+                    soundManager.play('hurt', 0.5);
+                    if (dead) { this.gameOver(); return; }
+                }
+                // 超出地图销毁
+                if (bullet.x < 0 || bullet.x > GameConfig.MAP_WIDTH || bullet.y < 0 || bullet.y > GameConfig.MAP_HEIGHT) {
+                    bullet.alive = false;
+                    bullet.graphics.destroy();
+                }
+            }
+            this.enemyBullets = this.enemyBullets.filter(b => b.alive);
+            
+            // 波次事件
+            this.updateWaveEvents(dt);
+            
             // 更新子弹
             for (const bullet of this.bullets) {
                 bullet.update(dt);
@@ -469,10 +531,32 @@ export class GameScene extends Phaser.Scene {
                 item.update(dt, this.player);
             }
             
+            // 宝箱拾取检测
+            for (const chest of this.chests) {
+                if (!chest.alive) continue;
+                const dist = Math.hypot(chest.x - this.player.x, chest.y - this.player.y);
+                if (dist < 50) {
+                    this.openChest(chest);
+                }
+            }
+            this.chests = this.chests.filter(c => c.alive);
+            
             // 更新 Buff
             this.buffManager.update(dt);
             // 应用 Buff 效果
             this.applyBuffs(dt);
+            
+            // 更新大招冷却
+            this.extraFeatures.updateUltimate(dt);
+            if (this.ultimateCooldownText) {
+                if (this.extraFeatures.ultimateReady) {
+                    this.ultimateCooldownText.setText('');
+                    this.ultimateBtn.setFillStyle(0x9C27B0, 0.8);
+                } else {
+                    this.ultimateCooldownText.setText(Math.ceil(this.extraFeatures.ultimateCooldown));
+                    this.ultimateBtn.setFillStyle(0x555555, 0.6);
+                }
+            }
             
             // 更新粒子
             this.updateParticles(dt);
@@ -582,6 +666,157 @@ export class GameScene extends Phaser.Scene {
         enemy.hp = enemy.maxHp;
         enemy.damage = Math.floor(enemy.damage * dmgMult);
         this.enemies.push(enemy);
+    }
+    
+    // 在指定位置生成怪物（用于召唤、分裂等）
+    spawnEnemyAt(x, y, type) {
+        const enemy = new Enemy(this, x, y, type);
+        const totalMult = this.enemyMultiplier * (this.difficulty ? this.difficulty.hpMult : 1);
+        const dmgMult = this.enemyMultiplier * (this.difficulty ? this.difficulty.dmgMult : 1);
+        enemy.maxHp = Math.floor(enemy.maxHp * totalMult);
+        enemy.hp = enemy.maxHp;
+        enemy.damage = Math.floor(enemy.damage * dmgMult);
+        this.enemies.push(enemy);
+    }
+    
+    // 敌人远程攻击子弹
+    spawnEnemyBullet(x, y, targetX, targetY, damage) {
+        const dx = targetX - x;
+        const dy = targetY - y;
+        const dist = Math.hypot(dx, dy) || 1;
+        const speed = 200;
+        const bullet = {
+            x, y,
+            vx: (dx / dist) * speed,
+            vy: (dy / dist) * speed,
+            damage,
+            radius: 8,
+            alive: true,
+            isEnemy: true,
+            graphics: this.add.circle(x, y, 8, 0xFF5722, 0.9).setDepth(4).setStrokeStyle(2, 0xFFC107, 0.8)
+        };
+        this.enemyBullets = this.enemyBullets || [];
+        this.enemyBullets.push(bullet);
+    }
+    
+    // 波次事件
+    updateWaveEvents(dt) {
+        if (this.gameTime >= this.nextWaveTime) {
+            this.nextWaveTime += 120; // 每2分钟一次
+            const waveType = Math.random() < 0.6 ? 'elite' : 'boss';
+            
+            if (waveType === 'elite') {
+                // 精英潮：生成5-8个精英怪
+                this.addFloatingText(this.player.x, this.player.y - 80, '⚠️ 精英潮来袭!', '#FF9800', 32);
+                soundManager.play('boss');
+                const count = 5 + Math.floor(Math.random() * 4);
+                for (let i = 0; i < count; i++) {
+                    this.time.delayedCall(i * 300, () => {
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = 400 + Math.random() * 200;
+                        this.spawnEnemyAt(
+                            this.player.x + Math.cos(angle) * dist,
+                            this.player.y + Math.sin(angle) * dist,
+                            'ELITE'
+                        );
+                    });
+                }
+            } else {
+                // Boss战
+                this.addFloatingText(this.player.x, this.player.y - 80, '👹 BOSS出现!', '#F44336', 36);
+                soundManager.play('boss');
+                const angle = Math.random() * Math.PI * 2;
+                this.spawnEnemyAt(
+                    this.player.x + Math.cos(angle) * 500,
+                    this.player.y + Math.sin(angle) * 500,
+                    'BOSS'
+                );
+            }
+        }
+    }
+    
+    // 宝箱掉落
+    spawnChest(x, y) {
+        const chest = {
+            x, y,
+            alive: true,
+            opened: false,
+            graphics: this.add.rectangle(x, y, 40, 30, 0x8D6E63, 0.95)
+                .setDepth(8)
+                .setStrokeStyle(3, 0xFFD700, 0.8),
+            glow: this.add.circle(x, y, 30, 0xFFD700, 0.15).setDepth(7)
+        };
+        // 宝箱盖子
+        this.add.rectangle(x, y - 8, 40, 12, 0xA1887F, 0.95).setDepth(9);
+        this.add.text(x, y, '?', { fontSize: '20px', color: '#FFD700', fontWeight: 'bold' }).setDepth(10).setOrigin(0.5);
+        this.chests.push(chest);
+    }
+    
+    // 打开宝箱（三选一）
+    openChest(chest) {
+        chest.opened = true;
+        chest.alive = false;
+        chest.graphics.destroy();
+        chest.glow.destroy();
+        soundManager.play('levelup');
+        
+        // 生成三选一选项（技能/遗物/属性）
+        this.generateLevelUpOptions();
+        this.showLevelUpUI();
+        this.addFloatingText(chest.x, chest.y - 30, '宝箱已开启!', '#FFD700', 20);
+    }
+    
+    // 商店界面
+    showShop() {
+        if (this.gameState === 'shop') return;
+        this.gameState = 'shop';
+        const w = this.scale.width;
+        const h = this.scale.height;
+        
+        this.shopBg = this.add.rectangle(w/2, h/2, w, h, 0x000000, 0.8).setScrollFactor(0).setDepth(4000);
+        this.add.text(w/2, h*0.1, '🛒 商店', { fontSize: '32px', color: '#FFD700', fontWeight: 'bold' }).setScrollFactor(0).setDepth(4001).setOrigin(0.5);
+        this.add.text(w - 80, h*0.1, `💰 ${this.gold}`, { fontSize: '18px', color: '#FFD700' }).setScrollFactor(0).setDepth(4001).setOrigin(0.5);
+        
+        // 关闭按钮
+        const closeBtn = this.add.rectangle(50, 40, 80, 40, 0x333333, 0.8).setScrollFactor(0).setDepth(4001).setStrokeStyle(2, 0xFFFFFF, 0.5).setInteractive({ useHandCursor: true });
+        this.add.text(50, 40, '关闭', { fontSize: '16px', color: '#FFFFFF' }).setScrollFactor(0).setDepth(4002).setOrigin(0.5);
+        closeBtn.on('pointerdown', () => {
+            soundManager.play('click');
+            this.closeShop();
+        });
+        
+        // 商品列表
+        let y = h * 0.2;
+        this.shopItems = [];
+        for (const item of ShopItems) {
+            const canAfford = this.gold >= item.price;
+            const card = this.add.rectangle(w/2, y, w*0.85, h*0.09, 0x1a1a2a, 0.95).setScrollFactor(0).setDepth(4001).setStrokeStyle(2, canAfford ? 0xFFD700 : 0x555555, canAfford ? 0.8 : 0.3);
+            this.add.text(w*0.15, y, item.icon, { fontSize: '24px' }).setScrollFactor(0).setDepth(4002).setOrigin(0.5);
+            this.add.text(w*0.25, y - 10, item.name, { fontSize: '15px', color: '#FFFFFF', fontWeight: 'bold' }).setScrollFactor(0).setDepth(4002).setOrigin(0, 0.5);
+            this.add.text(w*0.25, y + 10, item.desc, { fontSize: '11px', color: '#AAAAAA' }).setScrollFactor(0).setDepth(4002).setOrigin(0, 0.5);
+            
+            const buyBtn = this.add.rectangle(w*0.82, y, w*0.15, h*0.06, canAfford ? 0x4CAF50 : 0x555555, 0.8).setScrollFactor(0).setDepth(4002).setStrokeStyle(2, canAfford ? 0x81C784 : 0x777777, 0.5).setInteractive({ useHandCursor: canAfford });
+            this.add.text(w*0.82, y, `💰${item.price}`, { fontSize: '13px', color: canAfford ? '#FFFFFF' : '#888888' }).setScrollFactor(0).setDepth(4003).setOrigin(0.5);
+            
+            if (canAfford) {
+                buyBtn.on('pointerdown', () => {
+                    if (this.extraFeatures.buyItem(item.id)) {
+                        soundManager.play('levelup');
+                        this.closeShop();
+                        this.showShop(); // 刷新商店
+                    }
+                });
+            }
+            
+            y += h * 0.1;
+        }
+    }
+    
+    closeShop() {
+        this.gameState = 'playing';
+        this.shopBg?.destroy();
+        // 清理商店元素
+        this.children.list.filter(c => c.depth >= 4000 && c.depth < 5000).forEach(c => c.destroy());
     }
     
     triggerExplosion(x, y, radius, color) {
@@ -753,6 +988,12 @@ export class GameScene extends Phaser.Scene {
                 this.items.push(new Item(this, enemy.x + ox, enemy.y + oy, randomType));
             }
         }
+        
+        // 宝箱掉落（精英30%，Boss100%）
+        const chestChance = enemy.type === 'BOSS' ? 1.0 : enemy.type === 'ELITE' ? 0.3 : 0;
+        if (Math.random() < chestChance) {
+            this.spawnChest(enemy.x, enemy.y);
+        }
         for (let i = 0; i < 10; i++) {
             const angle = Math.random() * Math.PI * 2;
             const speed = 80 + Math.random() * 150;
@@ -805,8 +1046,24 @@ export class GameScene extends Phaser.Scene {
             { type: 'stat', name: '暴击率', desc: '暴击率 +5%', apply: () => { this.player.critChance += 0.05; } }
         ];
         
+        // 遗物选项（被动技能，30%概率出现）
+        let relicOptions = [];
+        if (Math.random() < 0.3 && this.relicManager) {
+            const relicKeys = this.relicManager.getRandomRelics(2);
+            relicOptions = relicKeys.map(key => {
+                const relic = RelicTypes[key];
+                return {
+                    type: 'relic',
+                    name: relic.icon + ' ' + relic.name,
+                    desc: relic.desc,
+                    relicKey: key,
+                    apply: () => { this.relicManager.addRelic(this, this.player, key); }
+                };
+            });
+        }
+        
         // 合并并随机选3个
-        const allOptions = [...skillOptions, ...statOptions];
+        const allOptions = [...skillOptions, ...statOptions, ...relicOptions];
         this.levelUpOptions = Phaser.Utils.Array.Shuffle(allOptions).slice(0, 3);
     }
     
@@ -847,7 +1104,11 @@ export class GameScene extends Phaser.Scene {
             const x = startX + i * (cardW + gap);
             const y = h * 0.45;
             
-            const card = this.add.rectangle(x, y, cardW, cardH, option.type === 'skill' ? 0x1A237E : 0x1B5E20, 0.9).setScrollFactor(0).setDepth(3001).setStrokeStyle(3, option.type === 'skill' ? 0x4FC3F7 : 0x66BB6A);
+            const cardColor = option.type === 'skill' ? 0x1A237E : option.type === 'relic' ? 0x4A148C : 0x1B5E20;
+            const borderColor = option.type === 'skill' ? 0x4FC3F7 : option.type === 'relic' ? 0xCE93D8 : 0x66BB6A;
+            const textColor = option.type === 'skill' ? '#4FC3F7' : option.type === 'relic' ? '#CE93D8' : '#66BB6A';
+            
+            const card = this.add.rectangle(x, y, cardW, cardH, cardColor, 0.9).setScrollFactor(0).setDepth(3001).setStrokeStyle(3, borderColor);
             card.setInteractive({ useHandCursor: true });
             card.on('pointerdown', () => {
                 if (option.type === 'skill') {
@@ -859,8 +1120,8 @@ export class GameScene extends Phaser.Scene {
                 this.gameState = 'playing';
             });
             
-            this.add.text(x, y - cardH * 0.25, option.name, { fontSize: '22px', color: option.type === 'skill' ? '#4FC3F7' : '#66BB6A', fontWeight: 'bold' }).setScrollFactor(0).setDepth(3002).setOrigin(0.5);
-            this.add.text(x, y + cardH * 0.1, option.desc, { fontSize: '14px', color: '#FFFFFF', align: 'center', wordWrap: { width: cardW * 0.8 } }).setScrollFactor(0).setDepth(3002).setOrigin(0.5);
+            this.add.text(x, y - cardH * 0.25, option.name, { fontSize: '20px', color: textColor, fontWeight: 'bold' }).setScrollFactor(0).setDepth(3002).setOrigin(0.5);
+            this.add.text(x, y + cardH * 0.1, option.desc, { fontSize: '13px', color: '#FFFFFF', align: 'center', wordWrap: { width: cardW * 0.8 } }).setScrollFactor(0).setDepth(3002).setOrigin(0.5);
             
             this.levelUpCards.push(card);
         }

@@ -47,10 +47,11 @@ export class MenuScene extends Phaser.Scene {
             color: '#FFD700'
         }).setOrigin(1, 0);
         
-        // 菜单按钮（2列4行网格）
+        // 菜单按钮（3列3行网格）
         const buttons = [
             { name: '开始游戏', icon: '▶', color: 0x4CAF50, scene: 'GameScene' },
             { name: '关卡选择', icon: '🗺', color: 0x2196F3, scene: 'LevelScene' },
+            { name: '成长系统', icon: '🌳', color: 0xFFD700, scene: 'ProgressionScene' },
             { name: '永久强化', icon: '⬆', color: 0xFF9800, scene: 'UpgradeScene' },
             { name: '角色选择', icon: '👤', color: 0x9C27B0, scene: 'CharacterScene' },
             { name: '装备选择', icon: '⚔', color: 0xF44336, scene: 'EquipmentScene' },
@@ -59,16 +60,17 @@ export class MenuScene extends Phaser.Scene {
             { name: '设置', icon: '⚙', color: 0x607D8B, scene: 'SettingsScene' }
         ];
         
-        const cols = 2;
-        const btnW = Math.min(w * 0.40, 280);
-        const btnH = Math.min(h * 0.11, 80);
-        const gapX = w * 0.04;
-        const gapY = h * 0.018;
+        const cols = 3;
+        const btnW = Math.min(w * 0.28, 200);
+        const btnH = Math.min(h * 0.10, 70);
+        const gapX = w * 0.02;
+        const gapY = h * 0.015;
         
         // 正确的居中计算
         const totalWidth = cols * btnW + (cols - 1) * gapX;
         const startX = (w - totalWidth) / 2 + btnW / 2;
-        const totalHeight = 4 * btnH + 3 * gapY;
+        const rows = Math.ceil(buttons.length / cols);
+        const totalHeight = rows * btnH + (rows - 1) * gapY;
         const startY = h * 0.24 + btnH / 2;
         
         buttons.forEach((btn, i) => {
