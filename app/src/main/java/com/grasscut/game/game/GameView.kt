@@ -80,6 +80,12 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
     private var bulletFireballBmp: Bitmap? = null
     private var backgroundBmp: Bitmap? = null
 
+    // 爆炸序列帧贴图（程序生成，16帧4x4）
+    private var explosionSpriteSheet: Bitmap? = null
+    private val EXPLOSION_FRAME_SIZE = 256
+    private val EXPLOSION_COLS = 4
+    private val EXPLOSION_ROWS = 4
+
     // 设置界面状态
     private var inSettings = false
     private val settingItems = listOf(
@@ -117,9 +123,168 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             bulletFireballBmp = BitmapFactory.decodeStream(context.assets.open("bullet_fireball.png"))
             // 背景贴图（整张，不裁剪）
             backgroundBmp = BitmapFactory.decodeStream(context.assets.open("background_full.png"))
+            // 程序生成爆炸序列帧贴图
+            explosionSpriteSheet = generateExplosionSpriteSheet()
         } catch (e: Exception) {
             // 贴图加载失败，回退几何图形
         }
+    }
+
+    // 程序生成爆炸序列帧贴图（16帧4x4，模拟Bloom泛光+多层烟雾+冲击波）
+    private fun generateExplosionSpriteSheet(): Bitmap {
+        val sheet = Bitmap.createBitmap(
+            EXPLOSION_FRAME_SIZE * EXPLOSION_COLS,
+            EXPLOSION_FRAME_SIZE * EXPLOSION_ROWS,
+            Bitmap.Config.ARGB_8888
+        )
+        val canvas = Canvas(sheet)
+        val center = EXPLOSION_FRAME_SIZE / 2f
+
+        for (frame in 0 until 16) {
+            val col = frame % EXPLOSION_COLS
+            val row = frame / EXPLOSION_COLS
+            val offsetX = col * EXPLOSION_FRAME_SIZE.toFloat()
+            val offsetY = row * EXPLOSION_FRAME_SIZE.toFloat()
+            val t = frame / 15f  // 0~1 进度
+
+            canvas.save()
+            canvas.translate(offsetX, offsetY)
+
+            // 阶段1 (0-0.25): 核心闪光 - 白色高亮，快速扩大
+            // 阶段2 (0.25-0.5): 火球膨胀 - 橙红色，带烟雾
+            // 阶段3 (0.5-0.75): 冲击波扩散 - 环形，带火花
+            // 阶段4 (0.75-1.0): 烟雾消散 - 灰色，缓慢变淡
+
+            val baseRadius = center * (0.15f + t * 0.85f)
+            val alpha = (255 * (1f - t * 0.7f)).toInt().coerceIn(0, 255)
+
+            // 第1层：最外层光晕（模拟Bloom，大范围低透明度）
+            if (t < 0.7f) {
+                val glowRadius = baseRadius * 1.8f
+                val glowAlpha = (alpha * 0.15f).toInt()
+                val glowColor = when {
+                    t < 0.3f -> 0xFFFFF8E1.toInt()  // 近白
+                    t < 0.6f -> 0xFFFF6F00.toInt()  // 橙
+                    else -> 0xFFD84315.toInt()      // 深红
+                }
+                val glowGrad = android.graphics.RadialGradient(
+                    center, center, glowRadius,
+                    glowColor and 0x00FFFFFF or (glowAlpha shl 24),
+                    glowColor and 0x00FFFFFF,
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                paint.shader = glowGrad
+                paint.alpha = glowAlpha
+                canvas.drawCircle(center, center, glowRadius, paint)
+                paint.shader = null
+            }
+
+            // 第2层：主火球（径向渐变，核心亮边缘暗）
+            if (t < 0.85f) {
+                val fireRadius = baseRadius * 1.0f
+                val coreColor = when {
+                    t < 0.2f -> 0xFFFFFFFF.toInt()   // 白
+                    t < 0.4f -> 0xFFFFEB3B.toInt()   // 黄
+                    t < 0.65f -> 0xFFFF9800.toInt()  // 橙
+                    else -> 0xFFE65100.toInt()        // 深橙
+                }
+                val edgeColor = when {
+                    t < 0.4f -> 0xFFFF5722.toInt()
+                    else -> 0xFFBF360C.toInt()
+                }
+                val fireGrad = android.graphics.RadialGradient(
+                    center, center, fireRadius,
+                    intArrayOf(coreColor, edgeColor, edgeColor and 0x00FFFFFF),
+                    floatArrayOf(0f, 0.6f, 1f),
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                paint.shader = fireGrad
+                paint.alpha = alpha
+                canvas.drawCircle(center, center, fireRadius, paint)
+                paint.shader = null
+            }
+
+            // 第3层：核心亮点（白色小圈，高亮度）
+            if (t < 0.4f) {
+                val coreRadius = baseRadius * 0.3f * (1f - t * 2f)
+                val coreGrad = android.graphics.RadialGradient(
+                    center, center, coreRadius,
+                    0xFFFFFFFF.toInt(), 0xFFFFEB3B.toInt(),
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                paint.shader = coreGrad
+                paint.alpha = (alpha * 0.9f).toInt()
+                canvas.drawCircle(center, center, coreRadius, paint)
+                paint.shader = null
+            }
+
+            // 第4层：冲击波环（2-3层，不同速度）
+            if (t > 0.2f && t < 0.9f) {
+                val ringProgress = (t - 0.2f) / 0.7f
+                for (ring in 0..2) {
+                    val ringT = (ringProgress + ring * 0.15f).coerceIn(0f, 1f)
+                    val ringRadius = baseRadius * (0.6f + ringT * 0.6f)
+                    val ringWidth = 6f * (1f - ringT) + 1f
+                    val ringAlpha = (alpha * (1f - ringT) * 0.6f).toInt()
+                    val ringColor = when (ring) {
+                        0 -> 0xFFFFAB40.toInt()
+                        1 -> 0xFFFFFFFF.toInt()
+                        else -> 0xFFFF6F00.toInt()
+                    }
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = ringWidth
+                    paint.color = ringColor
+                    paint.alpha = ringAlpha
+                    canvas.drawCircle(center, center, ringRadius, paint)
+                }
+                paint.style = Paint.Style.FILL
+            }
+
+            // 第5层：烟雾（不规则的灰色斑块，缓慢扩大）
+            if (t > 0.3f) {
+                val smokeProgress = (t - 0.3f) / 0.7f
+                val smokeCount = 6
+                for (i in 0 until smokeCount) {
+                    val angle = (i / smokeCount.toFloat()) * 6.28f + t * 2f
+                    val dist = baseRadius * (0.5f + smokeProgress * 0.6f)
+                    val sx = center + cos(angle) * dist * 0.7f
+                    val sy = center + sin(angle) * dist * 0.7f - smokeProgress * 20f
+                    val smokeRadius = baseRadius * 0.25f * (1f + smokeProgress * 0.5f)
+                    val smokeAlpha = (alpha * 0.25f * (1f - smokeProgress * 0.5f)).toInt()
+                    val smokeGrad = android.graphics.RadialGradient(
+                        sx, sy, smokeRadius,
+                        0xFF555555.toInt() and 0x00FFFFFF or (smokeAlpha shl 24),
+                        0xFF555555.toInt() and 0x00FFFFFF,
+                        android.graphics.Shader.TileMode.CLAMP
+                    )
+                    paint.shader = smokeGrad
+                    paint.alpha = smokeAlpha
+                    canvas.drawCircle(sx, sy, smokeRadius, paint)
+                    paint.shader = null
+                }
+            }
+
+            // 第6层：火花（小亮点，带拖尾感）
+            if (t > 0.15f && t < 0.7f) {
+                val sparkCount = 12
+                for (i in 0 until sparkCount) {
+                    val angle = (i / sparkCount.toFloat()) * 6.28f + t * 3f
+                    val sparkDist = baseRadius * (0.4f + (t - 0.15f) * 1.2f)
+                    val sx = center + cos(angle) * sparkDist
+                    val sy = center + sin(angle) * sparkDist
+                    val sparkSize = 3f + (1f - t) * 3f
+                    val sparkAlpha = (alpha * (1f - (t - 0.15f) / 0.55f) * 0.8f).toInt()
+                    paint.color = if (i % 2 == 0) 0xFFFFEB3B.toInt() else 0xFFFF6F00.toInt()
+                    paint.alpha = sparkAlpha
+                    canvas.drawCircle(sx, sy, sparkSize, paint)
+                }
+            }
+
+            paint.alpha = 255
+            canvas.restore()
+        }
+
+        return sheet
     }
 
     private fun drawGlow(canvas: Canvas, bmp: Bitmap?, x: Float, y: Float, radius: Float, alpha: Int = 255) {
@@ -678,24 +843,41 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
 
     // ============ 爆炸冲击波 ============
     private fun drawExplosions(canvas: Canvas) {
-        paint.style = Paint.Style.STROKE
         for (exp in world.explosions) {
-            // 外发光环
-            paint.color = exp.color
-            paint.strokeWidth = exp.lineWidth * 2
-            paint.alpha = (exp.alpha * 0.4f).toInt().coerceIn(0, 255)
-            canvas.drawCircle(exp.x, exp.y, exp.radius * 1.1f, paint)
-            // 主环
-            paint.strokeWidth = exp.lineWidth
-            paint.alpha = exp.alpha
-            canvas.drawCircle(exp.x, exp.y, exp.radius, paint)
-            // 内圈
-            paint.strokeWidth = exp.lineWidth * 0.5f
-            paint.alpha = (exp.alpha * 0.7f).toInt().coerceIn(0, 255)
-            canvas.drawCircle(exp.x, exp.y, exp.radius * 0.7f, paint)
+            if (explosionSpriteSheet != null && exp.useSprite) {
+                // 用序列帧贴图渲染爆炸
+                val frame = exp.frameIndex
+                val col = frame % EXPLOSION_COLS
+                val row = frame / EXPLOSION_COLS
+                val srcX = col * EXPLOSION_FRAME_SIZE
+                val srcY = row * EXPLOSION_FRAME_SIZE
+                val src = Rect(srcX, srcY, srcX + EXPLOSION_FRAME_SIZE, srcY + EXPLOSION_FRAME_SIZE)
+                // 爆炸大小根据 maxRadius 调整
+                val size = exp.maxRadius * 2.5f
+                val dst = RectF(exp.x - size / 2, exp.y - size / 2, exp.x + size / 2, exp.y + size / 2)
+                paint.alpha = exp.alpha
+                canvas.drawBitmap(explosionSpriteSheet!!, src, dst, paint)
+                paint.alpha = 255
+            } else {
+                // 回退：圆环渲染
+                paint.style = Paint.Style.STROKE
+                // 外发光环
+                paint.color = exp.color
+                paint.strokeWidth = exp.lineWidth * 2
+                paint.alpha = (exp.alpha * 0.4f).toInt().coerceIn(0, 255)
+                canvas.drawCircle(exp.x, exp.y, exp.radius * 1.1f, paint)
+                // 主环
+                paint.strokeWidth = exp.lineWidth
+                paint.alpha = exp.alpha
+                canvas.drawCircle(exp.x, exp.y, exp.radius, paint)
+                // 内圈
+                paint.strokeWidth = exp.lineWidth * 0.5f
+                paint.alpha = (exp.alpha * 0.7f).toInt().coerceIn(0, 255)
+                canvas.drawCircle(exp.x, exp.y, exp.radius * 0.7f, paint)
+                paint.alpha = 255
+                paint.style = Paint.Style.FILL
+            }
         }
-        paint.alpha = 255
-        paint.style = Paint.Style.FILL
     }
 
     // ============ 环绕飞刀（万剑归宗） ============
@@ -826,7 +1008,27 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
             if (!p.alive) continue
             val alpha = ((1f - p.age / p.lifetime) * 220).toInt().coerceIn(0, 220)
             val bmp = pickGlowForColor(p.currentColor)
-            drawGlow(canvas, bmp, p.x, p.y, p.currentSize * 3.6f, alpha)
+
+            // 拖尾渲染
+            if (p.trail && p.trailPositions.size >= 2) {
+                for (i in p.trailPositions.indices) {
+                    val trailAlpha = (alpha * (i + 1) / p.trailPositions.size * 0.5f).toInt()
+                    val trailSize = p.currentSize * 2f * (i + 1) / p.trailPositions.size
+                    val pos = p.trailPositions[i]
+                    drawGlow(canvas, bmp, pos.first, pos.second, trailSize * 3f, trailAlpha)
+                }
+            }
+
+            // 主粒子（带旋转）
+            if (p.rotationSpeed != 0f) {
+                canvas.save()
+                canvas.translate(p.x, p.y)
+                canvas.rotate(Math.toDegrees(p.rotation.toDouble()).toFloat())
+                drawGlow(canvas, bmp, 0f, 0f, p.currentSize * 3.6f, alpha)
+                canvas.restore()
+            } else {
+                drawGlow(canvas, bmp, p.x, p.y, p.currentSize * 3.6f, alpha)
+            }
         }
         paint.alpha = 255
     }

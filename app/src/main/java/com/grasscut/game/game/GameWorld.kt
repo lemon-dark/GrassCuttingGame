@@ -100,25 +100,109 @@ class GameWorld {
         }
     }
 
-    // 触发爆炸（冲击波环+粒子+震动+闪光）
+    // 触发多层爆炸（核心闪光+火花+烟雾+多层冲击波+震动+闪光）
     fun triggerExplosion(x: Float, y: Float, radius: Float, color: Int, particleCount: Int = 30, withFlash: Boolean = true, withShake: Boolean = true) {
-        explosions.add(Explosion(x, y, radius, color))
-        // 粒子爆发
-        val count = particleCount.coerceAtMost(50)
-        for (i in 0 until count) {
+        // 多层冲击波环（3层，不同颜色不同速度）
+        explosions.add(Explosion(x, y, radius, color, 0.35f))
+        explosions.add(Explosion(x, y, radius * 0.7f, 0xFFFFFFFF.toInt(), 0.2f))
+        explosions.add(Explosion(x, y, radius * 0.5f, lighterColor(color), 0.25f))
+
+        // 1. 核心闪光粒子（白色→颜色，大尺寸，弹回曲线）
+        for (i in 0 until (particleCount * 0.2f).toInt().coerceAtLeast(4)) {
             val angle = Random.nextFloat() * Math.PI.toFloat() * 2
-            val speed = 100f + Random.nextFloat() * 300f
+            val speed = 50f + Random.nextFloat() * 100f
             particles.add(Particle(
-                x, y,
-                cos(angle) * speed, sin(angle) * speed,
-                color, 4f + Random.nextFloat() * 4f,
-                0.4f + Random.nextFloat() * 0.4f,
-                gravity = 200f, drag = 0.96f,
-                startColor = color, endColor = 0xFFFFFFFF.toInt()
+                x, y, cos(angle) * speed, sin(angle) * speed,
+                0xFFFFFFFF.toInt(), 8f + Random.nextFloat() * 6f,
+                0.25f, gravity = 0f, drag = 0.92f,
+                startColor = 0xFFFFFFFF.toInt(), endColor = color,
+                sizeCurve = 1, rotationSpeed = (Random.nextFloat() - 0.5f) * 10f
             ))
         }
+
+        // 2. 火花粒子（颜色→暗色，带重力，旋转，拖尾）
+        val sparkCount = (particleCount * 0.5f).toInt().coerceAtLeast(8)
+        for (i in 0 until sparkCount) {
+            val angle = Random.nextFloat() * Math.PI.toFloat() * 2
+            val speed = 150f + Random.nextFloat() * 350f
+            particles.add(Particle(
+                x, y, cos(angle) * speed, sin(angle) * speed,
+                color, 4f + Random.nextFloat() * 5f,
+                0.4f + Random.nextFloat() * 0.4f,
+                gravity = 250f, drag = 0.95f,
+                startColor = lighterColor(color), endColor = darkerColor(color),
+                rotationSpeed = (Random.nextFloat() - 0.5f) * 15f,
+                trail = true
+            ))
+        }
+
+        // 3. 烟雾粒子（灰色，缓慢上升，持续变大，长寿命）
+        for (i in 0 until (particleCount * 0.3f).toInt().coerceAtLeast(4)) {
+            val angle = Random.nextFloat() * Math.PI.toFloat() * 2
+            val speed = 30f + Random.nextFloat() * 80f
+            particles.add(Particle(
+                x, y, cos(angle) * speed, sin(angle) * speed - 50f,
+                0xFF666666.toInt(), 10f + Random.nextFloat() * 10f,
+                0.8f + Random.nextFloat() * 0.6f,
+                gravity = -30f, drag = 0.97f,
+                startColor = 0xFF888888.toInt(), endColor = 0xFF333333.toInt(),
+                sizeCurve = 2
+            ))
+        }
+
         if (withShake) triggerShake(radius * 0.03f, 0.2f)
         if (withFlash) triggerFlash(0xFFFFFFFF.toInt(), 0.08f)
+    }
+
+    // 高级爆炸（超武大招专用，更华丽：更多粒子+全屏闪光+大震动+慢动作）
+    fun triggerUltimateExplosion(x: Float, y: Float, radius: Float, color: Int) {
+        // 5层冲击波
+        explosions.add(Explosion(x, y, radius, color, 0.5f))
+        explosions.add(Explosion(x, y, radius * 0.85f, 0xFFFFFFFF.toInt(), 0.3f))
+        explosions.add(Explosion(x, y, radius * 0.7f, lighterColor(color), 0.4f))
+        explosions.add(Explosion(x, y, radius * 0.5f, 0xFFFFD700.toInt(), 0.35f))
+        explosions.add(Explosion(x, y, radius * 0.3f, 0xFFFFFFFF.toInt(), 0.25f))
+
+        // 大量核心闪光
+        for (i in 0 until 20) {
+            val angle = Random.nextFloat() * Math.PI.toFloat() * 2
+            val speed = 80f + Random.nextFloat() * 150f
+            particles.add(Particle(x, y, cos(angle) * speed, sin(angle) * speed,
+                0xFFFFFFFF.toInt(), 12f + Random.nextFloat() * 8f, 0.35f,
+                drag = 0.9f, startColor = 0xFFFFFFFF.toInt(), endColor = color,
+                sizeCurve = 1, rotationSpeed = (Random.nextFloat() - 0.5f) * 12f))
+        }
+        // 大量火花（带拖尾）
+        for (i in 0 until 50) {
+            val angle = Random.nextFloat() * Math.PI.toFloat() * 2
+            val speed = 200f + Random.nextFloat() * 500f
+            particles.add(Particle(x, y, cos(angle) * speed, sin(angle) * speed,
+                color, 5f + Random.nextFloat() * 6f, 0.6f + Random.nextFloat() * 0.4f,
+                gravity = 200f, drag = 0.94f,
+                startColor = lighterColor(color), endColor = darkerColor(color),
+                rotationSpeed = (Random.nextFloat() - 0.5f) * 20f, trail = true))
+        }
+        // 烟雾
+        for (i in 0 until 15) {
+            val angle = Random.nextFloat() * Math.PI.toFloat() * 2
+            val speed = 40f + Random.nextFloat() * 100f
+            particles.add(Particle(x, y, cos(angle) * speed, sin(angle) * speed - 80f,
+                0xFF666666.toInt(), 15f + Random.nextFloat() * 15f, 1.2f,
+                gravity = -40f, drag = 0.96f,
+                startColor = 0xFF999999.toInt(), endColor = 0xFF222222.toInt(),
+                sizeCurve = 2))
+        }
+        // 环形粒子（从中心向外扩散的圆环）
+        for (i in 0 until 30) {
+            val angle = i / 30f * 6.28f
+            particles.add(Particle(x, y, cos(angle) * 400f, sin(angle) * 400f,
+                lighterColor(color), 8f, 0.5f, drag = 0.92f,
+                startColor = 0xFFFFFFFF.toInt(), endColor = color, sizeCurve = 1))
+        }
+
+        triggerShake(radius * 0.05f, 0.4f)
+        triggerFlash(0xFFFFFFFF.toInt(), 0.15f)
+        triggerSlowMotion(0.3f)
     }
 
     fun triggerShake(amount: Float, duration: Float) {

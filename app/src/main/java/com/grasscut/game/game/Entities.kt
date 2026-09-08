@@ -186,18 +186,29 @@ class Particle(
     var gravity: Float = 0f,
     var drag: Float = 0.98f,
     var startColor: Int = color,
-    var endColor: Int = color
+    var endColor: Int = color,
+    var rotation: Float = 0f,
+    var rotationSpeed: Float = 0f,
+    var sizeCurve: Int = 0,  // 0:线性缩小, 1:先大后小(弹回), 2:持续变大
+    var trail: Boolean = false
 ) {
     var age = 0f
     var alive = true
+    // 拖尾历史位置
+    val trailPositions = mutableListOf<Pair<Float, Float>>()
 
     fun update(dt: Float) {
         age += dt
         if (age >= lifetime) { alive = false; return }
+        if (trail) {
+            trailPositions.add(Pair(x, y))
+            if (trailPositions.size > 6) trailPositions.removeAt(0)
+        }
         vx *= drag
         vy = vy * drag + gravity * dt
         x += vx * dt
         y += vy * dt
+        rotation += rotationSpeed * dt
     }
 
     val currentColor: Int
@@ -207,7 +218,14 @@ class Particle(
         }
 
     val currentSize: Float
-        get() = size * (1f - age / lifetime * 0.5f)
+        get() {
+            val t = (age / lifetime).coerceIn(0f, 1f)
+            return when (sizeCurve) {
+                1 -> size * (1f + 0.5f * sin(t * 3.14f))  // 先大后小
+                2 -> size * (1f + t * 0.8f)  // 持续变大
+                else -> size * (1f - t * 0.5f)  // 线性缩小
+            }
+        }
 }
 
 // 颜色插值工具
@@ -227,18 +245,31 @@ fun lerpColor(c1: Int, c2: Int, t: Float): Int {
     return (a shl 24) or (r shl 16) or (g shl 8) or b
 }
 
+// 颜色变亮（向白色插值）
+fun lighterColor(color: Int, amount: Float = 0.4f): Int {
+    return lerpColor(color, 0xFFFFFFFF.toInt(), amount)
+}
+
+// 颜色变暗（向黑色插值）
+fun darkerColor(color: Int, amount: Float = 0.4f): Int {
+    return lerpColor(color, 0xFF000000.toInt(), amount)
+}
+
 // ============ 爆炸特效 ============
 class Explosion(
     var x: Float, var y: Float,
     var maxRadius: Float,
     var color: Int,
-    var lifetime: Float = 0.3f
+    var lifetime: Float = 0.3f,
+    var useSprite: Boolean = true  // 是否使用序列帧贴图
 ) {
     var age = 0f
     val alive get() = age < lifetime
     val radius get() = maxRadius * (age / lifetime)
     val alpha get() = (255 * (1 - age / lifetime)).toInt().coerceIn(0, 255)
     val lineWidth get() = 8f * (1 - age / lifetime) + 1f
+    // 序列帧索引（16帧，4x4）
+    val frameIndex get() = ((age / lifetime) * 15).toInt().coerceIn(0, 15)
     fun update(dt: Float) { age += dt }
 }
 
