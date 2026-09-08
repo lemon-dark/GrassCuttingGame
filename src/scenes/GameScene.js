@@ -8,6 +8,7 @@ import { SkillFactory, KnifeSkill, FireballSkill, LightningSkill, AuraSkill, Mis
 import { gameState } from '../state/GameState.js';
 import { soundManager } from '../audio/SoundManager.js';
 import { BackgroundImages } from '../assets/backgrounds.js';
+import { BackgroundGenerator } from '../utils/BackgroundGenerator.js';
 import { SpriteLoader } from '../utils/SpriteLoader.js';
 
 export class GameScene extends Phaser.Scene {
@@ -49,6 +50,10 @@ export class GameScene extends Phaser.Scene {
         // 关卡难度倍率
         this.level = gameState.getLevel(gameState.data.currentLevel);
         this.enemyMultiplier = this.level.enemyMultiplier;
+        
+        // 游戏难度倍率
+        this.difficulty = GameConfig.DIFFICULTIES[gameState.data.currentDifficulty] || GameConfig.DIFFICULTIES.normal;
+        console.log('游戏难度:', this.difficulty.name, '关卡倍率:', this.enemyMultiplier);
         
         this.enemies = [];
         this.bullets = [];
@@ -162,31 +167,19 @@ export class GameScene extends Phaser.Scene {
     
     loadLevelBackground() {
         const levelId = gameState.data.currentLevel;
-        const bgKey = 'bg_level' + levelId;
-        const bgData = BackgroundImages['level' + levelId] || BackgroundImages.level1;
+        // 使用代码生成的背景（更清晰、更轻量）
+        const bgKey = BackgroundGenerator.generate(this, levelId);
         
-        // 用 Image 对象加载 base64，确保图片解码完成
-        const img = new Image();
-        img.onload = () => {
-            // 图片加载完成后，添加到 Phaser 纹理管理器
-            if (!this.textures.exists(bgKey)) {
-                this.textures.addImage(bgKey, img);
-            }
-            // 用一整张 image 拉伸覆盖整个地图（不平铺拼接）
-            if (this.backgroundImage) this.backgroundImage.destroy();
-            this.backgroundImage = this.add.image(
-                GameConfig.MAP_WIDTH / 2,
-                GameConfig.MAP_HEIGHT / 2,
-                bgKey
-            ).setDisplaySize(GameConfig.MAP_WIDTH, GameConfig.MAP_HEIGHT)
-             .setDepth(-10)
-             .setAlpha(0.85);
-            console.log('背景图加载成功:', bgKey, img.width + 'x' + img.height, '拉伸到', GameConfig.MAP_WIDTH + 'x' + GameConfig.MAP_HEIGHT);
-        };
-        img.onerror = () => {
-            console.error('背景图加载失败:', bgKey);
-        };
-        img.src = bgData;
+        // 用一整张 image 拉伸覆盖整个地图
+        if (this.backgroundImage) this.backgroundImage.destroy();
+        this.backgroundImage = this.add.image(
+            GameConfig.MAP_WIDTH / 2,
+            GameConfig.MAP_HEIGHT / 2,
+            bgKey
+        ).setDisplaySize(GameConfig.MAP_WIDTH, GameConfig.MAP_HEIGHT)
+         .setDepth(-10)
+         .setAlpha(0.9);
+        console.log('代码背景加载成功:', bgKey);
     }
     
     drawBackground() {
@@ -199,29 +192,53 @@ export class GameScene extends Phaser.Scene {
     // 生成随机建筑装饰（先用方块替代）
     generateBuildings() {
         this.buildings = [];
-        const buildingCount = 40;
-        const colors = [0x2a2a4a, 0x3a3a5a, 0x1a1a3a, 0x4a4a6a, 0x252545];
+        const buildingCount = 50;
+        const levelId = gameState.data.currentLevel;
+        
+        // 不同关卡不同建筑颜色
+        const buildingColors = {
+            1: [0x1a2a4a, 0x2a3a5a, 0x1a1a3a, 0x3a4a6a, 0x252545], // 霓虹都市：蓝紫色
+            2: [0x1a3a1a, 0x2a4a2a, 0x1a2a1a, 0x3a5a3a, 0x253525], // 数据森林：绿色
+            3: [0x3a3a4a, 0x4a4a5a, 0x2a2a3a, 0x5a5a6a, 0x454555], // 太空站：银灰色
+            4: [0x3a1a1a, 0x4a2a2a, 0x2a1a1a, 0x5a3a3a, 0x452525], // 熔岩核心：暗红色
+            5: [0x2a1a4a, 0x3a2a5a, 0x1a1a3a, 0x4a3a6a, 0x252545]  // 量子深渊：紫色
+        };
+        const colors = buildingColors[levelId] || buildingColors[1];
+        const windowColor = levelId === 4 ? 0xFF9800 : levelId === 1 ? 0x00BCD4 : 0x4FC3F7;
         
         for (let i = 0; i < buildingCount; i++) {
             // 随机位置，避开中心出生点
             let x, y;
             do {
-                x = Math.random() * (GameConfig.MAP_WIDTH - 200) + 100;
-                y = Math.random() * (GameConfig.MAP_HEIGHT - 200) + 100;
-            } while (Math.hypot(x - GameConfig.MAP_WIDTH/2, y - GameConfig.MAP_HEIGHT/2) < 300);
+                x = Math.random() * (GameConfig.MAP_WIDTH - 300) + 150;
+                y = Math.random() * (GameConfig.MAP_HEIGHT - 300) + 150;
+            } while (Math.hypot(x - GameConfig.MAP_WIDTH/2, y - GameConfig.MAP_HEIGHT/2) < 400);
             
-            const w = 40 + Math.random() * 80;
-            const h = 40 + Math.random() * 80;
+            const w = 80 + Math.random() * 120;
+            const h = 80 + Math.random() * 120;
             const color = colors[Math.floor(Math.random() * colors.length)];
             
-            // 建筑主体
-            const building = this.add.rectangle(x, y, w, h, color, 0.9)
-                .setDepth(1)
-                .setStrokeStyle(2, 0x4FC3F7, 0.3);
+            // 建筑主体（带阴影）
+            this.add.rectangle(x + 4, y + 4, w, h, 0x000000, 0.3).setDepth(1);
+            const building = this.add.rectangle(x, y, w, h, color, 0.95)
+                .setDepth(2)
+                .setStrokeStyle(3, windowColor, 0.5);
             
             // 建筑顶部高光
-            this.add.rectangle(x, y - h/2 + 3, w - 4, 4, 0x6FC3F7, 0.4)
-                .setDepth(2);
+            this.add.rectangle(x, y - h/2 + 5, w - 8, 6, windowColor, 0.5).setDepth(3);
+            
+            // 窗户（发光）
+            const windowRows = Math.floor(h / 30);
+            const windowCols = Math.floor(w / 30);
+            for (let wr = 0; wr < windowRows; wr++) {
+                for (let wc = 0; wc < windowCols; wc++) {
+                    if (Math.random() > 0.4) { // 60%窗户亮
+                        const wx = x - w/2 + 15 + wc * 30;
+                        const wy = y - h/2 + 20 + wr * 30;
+                        this.add.rectangle(wx, wy, 12, 12, windowColor, 0.6 + Math.random() * 0.4).setDepth(3);
+                    }
+                }
+            }
             
             this.buildings.push(building);
         }
@@ -355,7 +372,8 @@ export class GameScene extends Phaser.Scene {
             this.spawnTimer -= dt;
             if (this.spawnTimer <= 0 && this.enemies.filter(e => e.alive).length < GameConfig.MAX_ENEMIES) {
                 this.spawnEnemy();
-                this.spawnInterval = Math.max(GameConfig.SPAWN_INTERVAL_MIN, GameConfig.SPAWN_INTERVAL - this.gameTime * 0.02);
+                const spawnMult = this.difficulty ? this.difficulty.spawnMult : 1;
+                this.spawnInterval = Math.max(GameConfig.SPAWN_INTERVAL_MIN, (GameConfig.SPAWN_INTERVAL - this.gameTime * 0.02) / spawnMult);
                 this.spawnTimer = this.spawnInterval;
             }
             
@@ -555,10 +573,12 @@ export class GameScene extends Phaser.Scene {
         }
         
         const enemy = new Enemy(this, x, y, type);
-        // 应用关卡难度倍率
-        enemy.maxHp = Math.floor(enemy.maxHp * this.enemyMultiplier);
+        // 应用关卡难度倍率 + 游戏难度倍率
+        const totalMult = this.enemyMultiplier * (this.difficulty ? this.difficulty.hpMult : 1);
+        const dmgMult = this.enemyMultiplier * (this.difficulty ? this.difficulty.dmgMult : 1);
+        enemy.maxHp = Math.floor(enemy.maxHp * totalMult);
         enemy.hp = enemy.maxHp;
-        enemy.damage = Math.floor(enemy.damage * this.enemyMultiplier);
+        enemy.damage = Math.floor(enemy.damage * dmgMult);
         this.enemies.push(enemy);
     }
     
@@ -897,46 +917,59 @@ export class GameScene extends Phaser.Scene {
         const startX = w/2 - totalWidth/2 + slotSize/2;
         const barY = h - 30;
         
-        // 清理旧的技能栏显示
-        if (this.skillBarElements) {
-            for (const el of this.skillBarElements) {
-                el.bg.destroy();
-                el.text.destroy();
-                el.levelText.destroy();
+        // 只在技能数量变化时重建
+        const skillCount = Math.min(skills.length, maxShow);
+        if (!this.skillBarElements || this.skillBarElements.length !== skillCount) {
+            // 清理旧的
+            if (this.skillBarElements) {
+                for (const el of this.skillBarElements) {
+                    el.bg.destroy();
+                    el.text.destroy();
+                    el.levelText.destroy();
+                }
+            }
+            this.skillBarElements = [];
+            
+            const skillColors = {
+                '能量弹': 0x4FC3F7, '飞刀': 0xBDBDBD, '火球': 0xFF7043,
+                '闪电': 0xFFEB3B, '灼烧光环': 0xFF9800, '追踪导弹': 0x9C27B0,
+                '冰锥术': 0x00BCD4, '旋风斩': 0x81C784
+            };
+            
+            for (let i = 0; i < skillCount; i++) {
+                const skill = skills[i];
+                const x = startX + i * (slotSize + gap);
+                const color = skillColors[skill.name] || 0x666666;
+                
+                const bg = this.add.rectangle(x, barY, slotSize, slotSize, color, 0.6)
+                    .setScrollFactor(0).setDepth(999);
+                const text = this.add.text(x, barY - 2, skill.name.charAt(0), {
+                    fontSize: '16px', color: '#FFFFFF', fontWeight: 'bold'
+                }).setScrollFactor(0).setDepth(1000).setOrigin(0.5);
+                const levelText = this.add.text(x, barY + 12, 'Lv' + skill.level, {
+                    fontSize: '9px', color: '#FFFFFF'
+                }).setScrollFactor(0).setDepth(1000).setOrigin(0.5);
+                
+                this.skillBarElements.push({ bg, text, levelText, skillName: skill.name });
             }
         }
-        this.skillBarElements = [];
         
-        const skillColors = {
-            '能量弹': 0x4FC3F7,
-            '飞刀': 0xBDBDBD,
-            '火球': 0xFF7043,
-            '闪电': 0xFFEB3B,
-            '灼烧光环': 0xFF9800,
-            '追踪导弹': 0x9C27B0,
-            '冰锥术': 0x00BCD4,
-            '旋风斩': 0x81C784
-        };
-        
-        for (let i = 0; i < Math.min(skills.length, maxShow); i++) {
+        // 每帧只更新等级和进化状态（轻量更新）
+        for (let i = 0; i < this.skillBarElements.length; i++) {
+            const el = this.skillBarElements[i];
             const skill = skills[i];
-            const x = startX + i * (slotSize + gap);
-            const color = skillColors[skill.name] || 0x666666;
-            const isEvolved = skill.evolved;
+            if (!skill) continue;
             
-            const bg = this.add.rectangle(x, barY, slotSize, slotSize, color, isEvolved ? 0.9 : 0.6)
-                .setScrollFactor(0).setDepth(999)
-                .setStrokeStyle(isEvolved ? 3 : 1, isEvolved ? 0xFFD700 : 0xFFFFFF, isEvolved ? 0.9 : 0.4);
-            
-            const text = this.add.text(x, barY - 2, skill.name.charAt(0), {
-                fontSize: '16px', color: '#FFFFFF', fontWeight: 'bold'
-            }).setScrollFactor(0).setDepth(1000).setOrigin(0.5);
-            
-            const levelText = this.add.text(x, barY + 12, 'Lv' + skill.level, {
-                fontSize: '9px', color: isEvolved ? '#FFD700' : '#FFFFFF'
-            }).setScrollFactor(0).setDepth(1000).setOrigin(0.5);
-            
-            this.skillBarElements.push({ bg, text, levelText });
+            el.levelText.setText('Lv' + skill.level);
+            if (skill.evolved) {
+                el.bg.setFillStyle(skillColors[skill.name] || 0x666666, 0.9);
+                el.bg.setStrokeStyle(3, 0xFFD700, 0.9);
+                el.levelText.setColor('#FFD700');
+            } else {
+                el.bg.setFillStyle(skillColors[skill.name] || 0x666666, 0.6);
+                el.bg.setStrokeStyle(1, 0xFFFFFF, 0.4);
+                el.levelText.setColor('#FFFFFF');
+            }
         }
     }
     
@@ -1069,7 +1102,8 @@ export class GameScene extends Phaser.Scene {
         gameState.recordGame(true, this.gameTime);
         gameState.addKill(this.killCount);
         gameState.clearLevel(this.level.id);
-        const coins = Math.floor(this.killCount * 1 + this.gameTime * 0.2 + this.level.reward);
+        const goldMult = this.difficulty ? this.difficulty.goldMult : 1;
+        const coins = Math.floor((this.killCount * 1 + this.gameTime * 0.2 + this.level.reward) * goldMult);
         gameState.addCoins(coins);
         
         const w = this.scale.width;

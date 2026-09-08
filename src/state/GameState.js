@@ -28,6 +28,8 @@ export class GameState {
             currentEquipments: { weapon: 'none', armor: 'none', accessory: 'none', relic: 'none' },
             // 当前关卡
             currentLevel: 1,
+            // 当前难度
+            currentDifficulty: 'normal',
             // 已通关关卡
             clearedLevels: [],
             // 设置

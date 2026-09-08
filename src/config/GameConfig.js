@@ -1,5 +1,13 @@
 // 游戏配置
 export const GameConfig = {
+    // 难度配置
+    DIFFICULTIES: {
+        easy: { name: '简单', hpMult: 0.7, dmgMult: 0.7, spawnMult: 0.8, goldMult: 1.5, xpMult: 1.2, color: 0x4CAF50 },
+        normal: { name: '普通', hpMult: 1.0, dmgMult: 1.0, spawnMult: 1.0, goldMult: 1.0, xpMult: 1.0, color: 0x2196F3 },
+        hard: { name: '困难', hpMult: 1.5, dmgMult: 1.3, spawnMult: 1.2, goldMult: 2.0, xpMult: 1.5, color: 0xFF9800 },
+        hell: { name: '地狱', hpMult: 2.5, dmgMult: 1.8, spawnMult: 1.5, goldMult: 3.0, xpMult: 2.0, color: 0xF44336 }
+    },
+    
     // 地图
     MAP_WIDTH: 3000,
     MAP_HEIGHT: 3000,
