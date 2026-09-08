@@ -417,9 +417,15 @@ export class GameScene extends Phaser.Scene {
         
         // 更新技能预览动画（仅在升级界面时更新）
         if (this.gameState === 'levelup' && this.skillPreviews && this.skillPreviews.length > 0) {
-            for (const preview of this.skillPreviews) {
-                preview.time += dt;
-                this.drawSkillPreview(preview);
+            try {
+                for (const preview of this.skillPreviews) {
+                    if (preview.graphics && preview.graphics.active) {
+                        preview.time += dt;
+                        this.drawSkillPreview(preview);
+                    }
+                }
+            } catch (e) {
+                console.error('技能预览动画错误:', e);
             }
         }
         
