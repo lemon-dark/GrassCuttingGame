@@ -288,19 +288,26 @@ class WhirlwindBlade(
 class LightningBolt(
     var startX: Float, var startY: Float,
     var endX: Float, var endY: Float,
-    var lifetime: Float = 0.2f,
-    var width: Float = 3f,
+    var lifetime: Float = 0.25f,
+    var width: Float = 4f,
     var color: Int = 0xFFEB3BFF.toInt()
 ) {
     var age = 0f
     var points: List<Pair<Float, Float>> = generatePath()
+    var branches: List<List<Pair<Float, Float>>> = generateBranches()
     val alive get() = age < lifetime
+    // 电弧闪烁：alpha随时间快速变化
+    val flickerAlpha: Int
+        get() {
+            val t = age / lifetime
+            return (255 * (1f - t) * (0.7f + 0.3f * sin(age * 80f))).toInt().coerceIn(0, 255)
+        }
 
     private fun generatePath(): List<Pair<Float, Float>> {
         var pts = mutableListOf(startX to startY, endX to endY)
         val dist = hypot(endX - startX, endY - startY)
-        val offset = (dist * 0.08f).coerceAtLeast(15f)
-        repeat(4) {
+        val offset = (dist * 0.1f).coerceAtLeast(20f)
+        repeat(5) {
             val newPts = mutableListOf<Pair<Float, Float>>()
             for (i in 0 until pts.size - 1) {
                 val (x1, y1) = pts[i]
@@ -316,9 +323,53 @@ class LightningBolt(
         return pts
     }
 
+    private fun generateBranches(): List<List<Pair<Float, Float>>> {
+        val branches = mutableListOf<List<Pair<Float, Float>>>()
+        if (points.size < 4) return branches
+        // 在主闪电的中间点生成2-3个分支
+        val branchCount = 2 + (Math.random() * 2).toInt()
+        for (b in 0 until branchCount) {
+            val startIdx = (points.size * (0.3f + b * 0.2f)).toInt().coerceIn(1, points.size - 2)
+            val (sx, sy) = points[startIdx]
+            // 分支方向：垂直于主闪电方向
+            val dx = points[startIdx + 1].first - points[startIdx - 1].first
+            val dy = points[startIdx + 1].second - points[startIdx - 1].second
+            val dist = hypot(dx, dy).coerceAtLeast(1f)
+            val perpX = -dy / dist
+            val perpY = dx / dist
+            val branchLen = 40f + (Math.random() * 60f).toFloat()
+            val dir = if (Math.random() > 0.5) 1f else -1f
+            val ex = sx + perpX * branchLen * dir + (Math.random().toFloat() - 0.5f) * 30f
+            val ey = sy + perpY * branchLen * dir + (Math.random().toFloat() - 0.5f) * 30f
+            // 生成分支路径
+            var branchPts = mutableListOf(sx to sy, ex to ey)
+            val bDist = hypot(ex - sx, ey - sy)
+            val bOffset = (bDist * 0.2f).coerceAtLeast(10f)
+            repeat(3) {
+                val newPts = mutableListOf<Pair<Float, Float>>()
+                for (i in 0 until branchPts.size - 1) {
+                    val (x1, y1) = branchPts[i]
+                    val (x2, y2) = branchPts[i + 1]
+                    val mx = (x1 + x2) / 2 + (Math.random().toFloat() - 0.5f) * bOffset
+                    val my = (y1 + y2) / 2 + (Math.random().toFloat() - 0.5f) * bOffset
+                    newPts.add(branchPts[i])
+                    newPts.add(mx to my)
+                }
+                newPts.add(branchPts.last())
+                branchPts = newPts
+            }
+            branches.add(branchPts)
+        }
+        return branches
+    }
+
     fun update(dt: Float) {
         age += dt
-        if (Math.random() < 0.5f) points = generatePath()
+        // 电弧闪烁：随机重新生成路径
+        if (Math.random() < 0.6f) {
+            points = generatePath()
+            branches = generateBranches()
+        }
     }
 }
 

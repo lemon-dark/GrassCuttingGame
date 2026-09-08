@@ -806,7 +806,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         paint.alpha = 255
     }
 
-    // ============ 闪电 ============
+    // ============ 闪电（升级：主闪电+分支+电弧闪烁+命中辉光） ============
     private fun drawLightning(canvas: Canvas) {
         paint.style = Paint.Style.STROKE
         paint.strokeCap = Paint.Cap.ROUND
@@ -814,27 +814,70 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         for (bolt in world.lightningBolts) {
             val pts = bolt.points
             if (pts.size < 2) continue
-            // 外发光（粗、半透明紫色）
-            paint.color = 0xFFB388FF.toInt()
-            paint.strokeWidth = bolt.width * 3f
-            paint.alpha = 60
+            val alpha = bolt.flickerAlpha
+
+            // 分支闪电（细、半透明）
+            for (branch in bolt.branches) {
+                if (branch.size < 2) continue
+                paint.color = lighterColor(bolt.color, 0.3f)
+                paint.strokeWidth = bolt.width * 0.8f
+                paint.alpha = (alpha * 0.5f).toInt()
+                for (i in 0 until branch.size - 1) {
+                    canvas.drawLine(branch[i].first, branch[i].second, branch[i+1].first, branch[i+1].second, paint)
+                }
+            }
+
+            // 外发光（粗、半透明）
+            paint.color = lighterColor(bolt.color, 0.4f)
+            paint.strokeWidth = bolt.width * 4f
+            paint.alpha = (alpha * 0.3f).toInt()
             for (i in 0 until pts.size - 1) {
                 canvas.drawLine(pts[i].first, pts[i].second, pts[i+1].first, pts[i+1].second, paint)
             }
-            // 中层（黄色）
+            // 中层（主色）
             paint.color = bolt.color
-            paint.strokeWidth = bolt.width * 1.5f
-            paint.alpha = 180
+            paint.strokeWidth = bolt.width * 1.8f
+            paint.alpha = (alpha * 0.8f).toInt()
             for (i in 0 until pts.size - 1) {
                 canvas.drawLine(pts[i].first, pts[i].second, pts[i+1].first, pts[i+1].second, paint)
             }
             // 内芯（亮白）
             paint.color = 0xFFFFFFFF.toInt()
-            paint.strokeWidth = bolt.width * 0.6f
-            paint.alpha = 255
+            paint.strokeWidth = bolt.width * 0.7f
+            paint.alpha = alpha
             for (i in 0 until pts.size - 1) {
                 canvas.drawLine(pts[i].first, pts[i].second, pts[i+1].first, pts[i+1].second, paint)
             }
+
+            // 命中点辉光（末端）
+            val endX = pts.last().first
+            val endY = pts.last().second
+            val glowGrad = android.graphics.RadialGradient(
+                endX, endY, bolt.width * 6f,
+                0xFFFFFFFF.toInt(), lighterColor(bolt.color, 0.2f) and 0x00FFFFFF,
+                android.graphics.Shader.TileMode.CLAMP
+            )
+            paint.shader = glowGrad
+            paint.style = Paint.Style.FILL
+            paint.alpha = (alpha * 0.8f).toInt()
+            canvas.drawCircle(endX, endY, bolt.width * 6f, paint)
+            paint.shader = null
+            paint.style = Paint.Style.STROKE
+
+            // 起点辉光
+            val startX = pts.first().first
+            val startY = pts.first().second
+            val startGrad = android.graphics.RadialGradient(
+                startX, startY, bolt.width * 4f,
+                0xFFFFFFFF.toInt(), lighterColor(bolt.color, 0.3f) and 0x00FFFFFF,
+                android.graphics.Shader.TileMode.CLAMP
+            )
+            paint.shader = startGrad
+            paint.style = Paint.Style.FILL
+            paint.alpha = (alpha * 0.6f).toInt()
+            canvas.drawCircle(startX, startY, bolt.width * 4f, paint)
+            paint.shader = null
+            paint.style = Paint.Style.STROKE
         }
         paint.alpha = 255
         paint.strokeWidth = 1f
