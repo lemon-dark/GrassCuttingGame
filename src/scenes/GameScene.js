@@ -69,6 +69,10 @@ export class GameScene extends Phaser.Scene {
         this.floatingTexts = [];
         this.lightningBolts = [];
         this.explosions = [];
+        // 战斗手感系统
+        this.hitStop = 0;      // 命中停顿时间（秒）
+        this.slowMotion = 0;   // 慢动作时间（秒）
+        this.screenShake = 0;  // 屏幕震动强度
         this.buffManager = new BuffManager();
         this.relicManager = new RelicManager();
         this.extraFeatures = new ExtraFeaturesManager(this);
@@ -388,9 +392,21 @@ export class GameScene extends Phaser.Scene {
     }
     
     update(time, delta) {
-        const dt = delta / 1000;
+        let dt = delta / 1000;
         
         if (this.paused) return;
+        
+        // 命中停顿系统：击杀时短暂冻结游戏，增强打击感
+        if (this.hitStop > 0) {
+            this.hitStop -= dt;
+            dt = 0;  // 游戏逻辑完全冻结
+            // 但屏幕震动继续（如果有的话）
+        }
+        // BOSS击杀慢动作：时间减速到30%
+        if (this.slowMotion > 0) {
+            this.slowMotion -= delta / 1000;
+            dt *= 0.3;
+        }
         
         // 更新技能预览动画（升级界面时也需要更新）
         if (this.skillPreviews && this.skillPreviews.length > 0) {
@@ -437,6 +453,8 @@ export class GameScene extends Phaser.Scene {
                     const dead = this.player.takeDamage(enemy.damage);
                     soundManager.play('hurt', 0.6);
                     soundManager.playVoice('hurt');
+                    // 受击屏幕震动
+                    this.cameras.main.shake(100, 0.005);
                     if (dead) { this.gameOver(); return; }
                 }
             }
@@ -453,6 +471,8 @@ export class GameScene extends Phaser.Scene {
                     bullet.graphics.destroy();
                     const dead = this.player.takeDamage(bullet.damage);
                     soundManager.play('hurt', 0.5);
+                    // 受击屏幕震动
+                    this.cameras.main.shake(80, 0.004);
                     if (dead) { this.gameOver(); return; }
                 }
                 // 超出地图销毁
@@ -497,7 +517,7 @@ export class GameScene extends Phaser.Scene {
                         enemy.knockbackX += Math.cos(angle) * (isCrit ? 300 : 150);
                         enemy.knockbackY += Math.sin(angle) * (isCrit ? 300 : 150);
                         
-                        this.addFloatingText(enemy.x, enemy.y - enemy.radius, Math.floor(dmg).toString(), isCrit ? 0xFFD700 : 0xFFFFFF, isCrit ? 28 : 18);
+                        this.addFloatingText(enemy.x, enemy.y - enemy.radius, Math.floor(dmg).toString(), isCrit ? 0xFFD700 : 0xFFFFFF, isCrit ? 28 : 18, isCrit);
                         this.spawnHitParticles(enemy.x, enemy.y, isCrit);
                         
                         // 冰锥减速
@@ -977,10 +997,42 @@ export class GameScene extends Phaser.Scene {
         }
     }
     
-    addFloatingText(x, y, text, color, size) {
-        const txt = this.add.text(x, y, text, { fontSize: `${size}px`, color: `#${color.toString(16).padStart(6, '0')}`, fontWeight: 'bold' })
-            .setDepth(2000).setOrigin(0.5);
-        this.floatingTexts.push({ text: txt, life: 0.8, maxLife: 0.8, vy: -80 });
+    addFloatingText(x, y, text, color, size, isCrit = false) {
+        const txt = this.add.text(x, y, text, { 
+            fontSize: `${size}px`, 
+            color: `#${color.toString(16).padStart(6, '0')}`, 
+            fontWeight: 'bold',
+            stroke: isCrit ? '#000000' : null,
+            strokeThickness: isCrit ? 3 : 0
+        }).setDepth(2000).setOrigin(0.5);
+        
+        // 暴击数字：更大、带描边、弹出动画
+        if (isCrit) {
+            txt.setScale(1.5);
+            this.tweens.add({
+                targets: txt,
+                scale: 1.0,
+                duration: 200,
+                ease: 'Back.Out'
+            });
+        } else {
+            // 普通伤害数字：轻微弹出
+            txt.setScale(0.8);
+            this.tweens.add({
+                targets: txt,
+                scale: 1.0,
+                duration: 100,
+                ease: 'Quad.Out'
+            });
+        }
+        
+        this.floatingTexts.push({ 
+            text: txt, 
+            life: 0.8, 
+            maxLife: 0.8, 
+            vy: isCrit ? -120 : -80,
+            isCrit: isCrit
+        });
     }
     
     updateFloatingTexts(dt) {
@@ -993,6 +1045,10 @@ export class GameScene extends Phaser.Scene {
                 continue;
             }
             ft.text.y += ft.vy * dt;
+            // 暴击数字：快速上升后减速
+            if (ft.isCrit) {
+                ft.vy *= 0.95;
+            }
             ft.text.setAlpha(ft.life / ft.maxLife);
         }
     }
@@ -1000,6 +1056,28 @@ export class GameScene extends Phaser.Scene {
     onEnemyKilled(enemy) {
         this.killCount++;
         soundManager.play('death', 0.5);
+        
+        // === 战斗手感：命中停顿 ===
+        // 小怪：0.04秒短暂停顿；精英：0.08秒；BOSS：1.5秒慢动作
+        if (enemy.type === 'BOSS') {
+            this.slowMotion = 1.5;
+            this.hitStop = 0.15;
+            // BOSS击杀：强屏幕震动+镜头缩放
+            this.cameras.main.shake(800, 0.015);
+            this.cameras.main.zoomTo(1.2, 300, 'Power2');
+            this.time.delayedCall(800, () => {
+                this.cameras.main.zoomTo(1.0, 500, 'Power2');
+            });
+        } else if (enemy.type === 'ELITE') {
+            this.hitStop = Math.max(this.hitStop, 0.08);
+            this.cameras.main.shake(150, 0.008);
+        } else {
+            // 小怪只在同时击杀多个时才停顿，避免频繁卡顿
+            if (this.hitStop < 0.02) {
+                this.hitStop = 0.025;
+            }
+        }
+        
         // 击杀语音（低频触发）
         if (enemy.type === 'BOSS') {
             soundManager.playVoice('kill');
@@ -1040,18 +1118,40 @@ export class GameScene extends Phaser.Scene {
         if (Math.random() < chestChance) {
             this.spawnChest(enemy.x, enemy.y);
         }
-        for (let i = 0; i < 10; i++) {
+        // === 战斗手感：击杀粒子特效 ===
+        // 不同类型敌人不同粒子数量和颜色
+        const particleCount = enemy.type === 'BOSS' ? 30 : enemy.type === 'ELITE' ? 18 : 10;
+        const particleColors = enemy.type === 'BOSS' ? [0xFFD700, 0xFF6D00, 0xFF5722, 0xFFFFFF] :
+                               enemy.type === 'ELITE' ? [0xFFA500, 0xFF6D00, 0xFFFFFF] :
+                               [enemy.color, 0xFFFFFF, 0xFFEB3B];
+        
+        for (let i = 0; i < particleCount; i++) {
             const angle = Math.random() * Math.PI * 2;
-            const speed = 80 + Math.random() * 150;
+            const speed = (60 + Math.random() * 180) * (enemy.type === 'BOSS' ? 1.5 : 1);
+            const color = particleColors[Math.floor(Math.random() * particleColors.length)];
+            const size = (3 + Math.random() * 6) * (enemy.type === 'BOSS' ? 1.3 : 1);
             this.particles.push({
                 x: enemy.x, y: enemy.y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
-                color: enemy.color,
-                size: 4 + Math.random() * 5,
-                life: 0.4 + Math.random() * 0.3,
-                maxLife: 0.7,
-                graphics: this.add.circle(enemy.x, enemy.y, 4, enemy.color, 0.8)
+                color: color,
+                size: size,
+                life: 0.4 + Math.random() * 0.4,
+                maxLife: 0.8,
+                graphics: this.add.circle(enemy.x, enemy.y, size, color, 0.9)
+            });
+        }
+        
+        // 精英/BOSS额外：冲击波圆环
+        if (enemy.type === 'ELITE' || enemy.type === 'BOSS') {
+            const ringRadius = enemy.type === 'BOSS' ? 150 : 80;
+            const ringColor = enemy.type === 'BOSS' ? 0xFFD700 : 0xFFA500;
+            this.explosions.push({
+                x: enemy.x, y: enemy.y,
+                radius: ringRadius,
+                color: ringColor,
+                life: 0.4, maxLife: 0.4,
+                graphics: null
             });
         }
     }
