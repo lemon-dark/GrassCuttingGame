@@ -57,7 +57,8 @@ export class MenuScene extends Phaser.Scene {
             { name: '装备选择', icon: '⚔', color: 0xF44336, scene: 'EquipmentScene' },
             { name: '怪物图鉴', icon: '👾', color: 0x00BCD4, scene: 'BestiaryScene' },
             { name: '技能图鉴', icon: '✨', color: 0x8BC34A, scene: 'SkillBestiaryScene' },
-            { name: '设置', icon: '⚙', color: 0x607D8B, scene: 'SettingsScene' }
+            { name: '设置', icon: '⚙', color: 0x607D8B, scene: 'SettingsScene' },
+            { name: '错误日志', icon: '🐛', color: 0xF44336, scene: 'ErrorLogScene' }
         ];
         
         const cols = 3;
