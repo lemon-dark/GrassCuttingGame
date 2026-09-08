@@ -13,6 +13,7 @@ const config = {
     parent: 'game-container',
     width: window.innerWidth,
     height: window.innerHeight,
+    resolution: window.devicePixelRatio || 1, // 关键：按设备像素比渲染，文字清晰
     scene: [MenuScene, GameScene, LevelScene, UpgradeScene, CharacterScene, EquipmentScene, BestiaryScene, SkillBestiaryScene, SettingsScene],
     physics: {
         default: 'arcade',
@@ -27,8 +28,9 @@ const config = {
     },
     render: {
         antialias: true,
+        antialiasGL: true, // WebGL抗锯齿
         pixelArt: false,
-        roundPixels: true,
+        roundPixels: false, // 文字渲染需要关闭圆整像素，否则可能模糊
         powerPreference: 'high-performance'
     }
 };
