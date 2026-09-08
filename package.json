@@ -1,0 +1,23 @@
+{
+  "name": "grasscuttinggame-phaser",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/android": "^8.5.1",
+    "@capacitor/cli": "^8.5.1",
+    "@capacitor/core": "^8.5.1",
+    "phaser": "^4.2.1",
+    "vite": "^8.2.2"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}
