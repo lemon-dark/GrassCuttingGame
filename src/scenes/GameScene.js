@@ -20,18 +20,16 @@ export class GameScene extends Phaser.Scene {
         soundManager.init();
         soundManager.updateSettings(gameState.data.settings);
         
-        // 异步加载 sprite sheet（不阻塞游戏启动，加载完成后角色自动显示）
-        SpriteLoader.loadAll(this);
+        // 显示加载中
+        const w = this.scale.width;
+        const h = this.scale.height;
+        this.loadingText = this.add.text(w / 2, h / 2, '加载中...', {
+            fontSize: '32px', color: '#4FC3F7', fontWeight: 'bold'
+        }).setOrigin(0.5).setDepth(9999).setScrollFactor(0);
         
-        // 直接初始化游戏（不等待纹理加载）
-        this.initGame();
-        
-        // 超时兜底：3秒后如果加载中文字还在，强制移除
-        this.time.delayedCall(3000, () => {
-            if (this.loadingText) {
-                this.loadingText.destroy();
-                this.loadingText = null;
-            }
+        // 先加载所有 sprite sheet 和动画，完成后再初始化游戏（确保角色纹理已就绪）
+        SpriteLoader.loadAll(this, () => {
+            this.initGame();
         });
     }
     

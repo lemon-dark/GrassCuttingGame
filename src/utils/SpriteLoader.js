@@ -7,13 +7,25 @@ export class SpriteLoader {
         const keys = ['player', 'enemy_normal', 'enemy_fast', 'enemy_tank', 'enemy_elite', 'enemy_boss'];
         let loadedCount = 0;
         let failedCount = 0;
+        let callbackCalled = false;
         
         const checkComplete = () => {
+            if (callbackCalled) return;
             if (loadedCount + failedCount >= keys.length) {
+                callbackCalled = true;
                 console.log(`Sprite sheet 加载完成: 成功${loadedCount}, 失败${failedCount}`);
                 if (callback) callback();
             }
         };
+        
+        // 超时兜底：5秒后强制完成，避免永远卡住
+        scene.time.delayedCall(5000, () => {
+            if (!callbackCalled) {
+                console.warn('Sprite sheet 加载超时，强制继续');
+                callbackCalled = true;
+                if (callback) callback();
+            }
+        });
         
         for (const key of keys) {
             const data = SpriteSheets[key];
@@ -40,18 +52,16 @@ export class SpriteLoader {
                     // 创建行走动画（如果还没创建）
                     const animKey = key + '_walk';
                     if (!scene.anims.exists(animKey)) {
-                        const frameRate = key === 'player' ? 12 : 8; // 玩家12帧/秒，怪物8帧/秒
+                        const frameRate = key === 'player' ? 12 : 8;
                         scene.anims.create({
                             key: animKey,
                             frames: scene.anims.generateFrameNumbers(key, { start: 0, end: SPRITE_FRAME_COUNT - 1 }),
                             frameRate: frameRate,
                             repeat: -1
                         });
-                        console.log('动画创建成功:', animKey, '帧率:', frameRate + 'fps');
                     }
                     
                     loadedCount++;
-                    console.log('Sprite sheet 加载成功:', key, img.width + 'x' + img.height);
                 } catch (e) {
                     console.error('Sprite sheet 处理失败:', key, e);
                     failedCount++;
