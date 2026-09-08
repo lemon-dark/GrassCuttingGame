@@ -257,57 +257,137 @@ export class GameScene extends Phaser.Scene {
     // 生成随机建筑装饰（先用方块替代）
     generateBuildings() {
         this.buildings = [];
-        const buildingCount = 50;
         const levelId = gameState.data.currentLevel;
         
-        // 不同关卡不同建筑颜色
-        const buildingColors = {
-            1: [0x1a2a4a, 0x2a3a5a, 0x1a1a3a, 0x3a4a6a, 0x252545], // 霓虹都市：蓝紫色
-            2: [0x1a3a1a, 0x2a4a2a, 0x1a2a1a, 0x3a5a3a, 0x253525], // 数据森林：绿色
-            3: [0x3a3a4a, 0x4a4a5a, 0x2a2a3a, 0x5a5a6a, 0x454555], // 太空站：银灰色
-            4: [0x3a1a1a, 0x4a2a2a, 0x2a1a1a, 0x5a3a3a, 0x452525], // 熔岩核心：暗红色
-            5: [0x2a1a4a, 0x3a2a5a, 0x1a1a3a, 0x4a3a6a, 0x252545]  // 量子深渊：紫色
+        // 不同关卡不同建筑配色（更亮、更饱和，和深色背景区分）
+        const buildingThemes = {
+            1: { // 霓虹都市：青蓝色科技建筑
+                bodyColors: [0x0a3a5a, 0x0a4a6a, 0x1a5a7a, 0x0a2a4a, 0x1a4a6a],
+                borderColor: 0x00BCD4,
+                windowColor: 0x00E5FF,
+                topColor: 0x4DD0E1
+            },
+            2: { // 数据森林：翠绿色自然建筑
+                bodyColors: [0x0a4a2a, 0x1a5a3a, 0x2a6a4a, 0x0a3a1a, 0x1a4a2a],
+                borderColor: 0x4CAF50,
+                windowColor: 0x8BC34A,
+                topColor: 0x81C784
+            },
+            3: { // 太空站：银白色金属建筑
+                bodyColors: [0x4a4a5a, 0x5a5a6a, 0x6a6a7a, 0x3a3a4a, 0x555565],
+                borderColor: 0x90A4AE,
+                windowColor: 0xE3F2FD,
+                topColor: 0xB0BEC5
+            },
+            4: { // 熔岩核心：橙红色火山建筑
+                bodyColors: [0x5a1a0a, 0x6a2a1a, 0x7a3a2a, 0x4a1a0a, 0x5a2a1a],
+                borderColor: 0xFF5722,
+                windowColor: 0xFF9800,
+                topColor: 0xFF7043
+            },
+            5: { // 量子深渊：紫粉色能量建筑
+                bodyColors: [0x3a0a5a, 0x4a1a6a, 0x5a2a7a, 0x2a0a4a, 0x3a1a5a],
+                borderColor: 0xE040FB,
+                windowColor: 0xCE93D8,
+                topColor: 0xBA68C8
+            }
         };
-        const colors = buildingColors[levelId] || buildingColors[1];
-        const windowColor = levelId === 4 ? 0xFF9800 : levelId === 1 ? 0x00BCD4 : 0x4FC3F7;
+        const theme = buildingThemes[levelId] || buildingThemes[1];
         
-        for (let i = 0; i < buildingCount; i++) {
-            // 随机位置，避开中心出生点
-            let x, y;
-            do {
-                x = Math.random() * (GameConfig.MAP_WIDTH - 300) + 150;
-                y = Math.random() * (GameConfig.MAP_HEIGHT - 300) + 150;
-            } while (Math.hypot(x - GameConfig.MAP_WIDTH/2, y - GameConfig.MAP_HEIGHT/2) < 400);
-            
-            const w = 80 + Math.random() * 120;
-            const h = 80 + Math.random() * 120;
-            const color = colors[Math.floor(Math.random() * colors.length)];
-            
-            // 建筑主体（带阴影）
-            this.add.rectangle(x + 4, y + 4, w, h, 0x000000, 0.3).setDepth(1);
-            const building = this.add.rectangle(x, y, w, h, color, 0.95)
-                .setDepth(2)
-                .setStrokeStyle(3, windowColor, 0.5);
-            
-            // 建筑顶部高光
-            this.add.rectangle(x, y - h/2 + 5, w - 8, 6, windowColor, 0.5).setDepth(3);
-            
-            // 窗户（发光）
-            const windowRows = Math.floor(h / 30);
-            const windowCols = Math.floor(w / 30);
-            for (let wr = 0; wr < windowRows; wr++) {
-                for (let wc = 0; wc < windowCols; wc++) {
-                    if (Math.random() > 0.4) { // 60%窗户亮
-                        const wx = x - w/2 + 15 + wc * 30;
-                        const wy = y - h/2 + 20 + wr * 30;
-                        this.add.rectangle(wx, wy, 12, 12, windowColor, 0.6 + Math.random() * 0.4).setDepth(3);
+        // ========== 街区式布局 ==========
+        // 地图 3000x3000，分成 5x5 街区网格
+        // 每个街区 500x500，街区之间有 80 像素宽的道路
+        // 中心 1 个街区是空旷区域（出生点）
+        const gridSize = 5;
+        const blockSize = 520;
+        const roadWidth = 80;
+        const totalSize = gridSize * blockSize + (gridSize - 1) * roadWidth;
+        const offsetX = (GameConfig.MAP_WIDTH - totalSize) / 2;
+        const offsetY = (GameConfig.MAP_HEIGHT - totalSize) / 2;
+        const centerBlock = Math.floor(gridSize / 2);
+        
+        let buildingCount = 0;
+        
+        for (let gx = 0; gx < gridSize; gx++) {
+            for (let gy = 0; gy < gridSize; gy++) {
+                // 中心街区空旷（出生点）
+                if (gx === centerBlock && gy === centerBlock) continue;
+                
+                // 计算街区位置
+                const blockX = offsetX + gx * (blockSize + roadWidth);
+                const blockY = offsetY + gy * (blockSize + roadWidth);
+                
+                // 街区内建筑物布局：2x2 网格，每个位置可能有建筑
+                const innerGrid = 2;
+                const innerSize = (blockSize - 40) / innerGrid; // 街区内边距40
+                
+                for (let ix = 0; ix < innerGrid; ix++) {
+                    for (let iy = 0; iy < innerGrid; iy++) {
+                        // 70% 概率有建筑
+                        if (Math.random() > 0.7) continue;
+                        
+                        // 建筑位置（在街区内的子格子中，有随机偏移）
+                        const baseX = blockX + 20 + ix * innerSize + innerSize / 2;
+                        const baseY = blockY + 20 + iy * innerSize + innerSize / 2;
+                        const x = baseX + (Math.random() - 0.5) * 30;
+                        const y = baseY + (Math.random() - 0.5) * 30;
+                        
+                        // 随机建筑大小（统一规格，不要太随机）
+                        const sizeTypes = [
+                            { w: 100, h: 100 },  // 小正方形
+                            { w: 140, h: 140 },  // 中正方形
+                            { w: 100, h: 160 },  // 竖长方形
+                            { w: 160, h: 100 },  // 横长方形
+                        ];
+                        const sizeType = sizeTypes[Math.floor(Math.random() * sizeTypes.length)];
+                        const w = sizeType.w;
+                        const h = sizeType.h;
+                        
+                        const color = theme.bodyColors[Math.floor(Math.random() * theme.bodyColors.length)];
+                        
+                        // 建筑阴影（更大更明显）
+                        this.add.rectangle(x + 6, y + 6, w, h, 0x000000, 0.5).setDepth(1);
+                        
+                        // 建筑主体（带发光边框，和背景区分）
+                        const building = this.add.rectangle(x, y, w, h, color, 0.95)
+                            .setDepth(2)
+                            .setStrokeStyle(4, theme.borderColor, 0.8);
+                        
+                        // 建筑顶部高光（更宽更亮）
+                        this.add.rectangle(x, y - h/2 + 8, w - 12, 8, theme.topColor, 0.7).setDepth(3);
+                        
+                        // 建筑底部暗边（增加立体感）
+                        this.add.rectangle(x, y + h/2 - 6, w - 12, 6, 0x000000, 0.4).setDepth(3);
+                        
+                        // 窗户（发光，更亮更整齐）
+                        const windowRows = Math.floor(h / 35);
+                        const windowCols = Math.floor(w / 35);
+                        const winW = 16, winH = 16;
+                        const startX = x - (windowCols - 1) * 20;
+                        const startY = y - (windowRows - 1) * 20 - 5;
+                        
+                        for (let wr = 0; wr < windowRows; wr++) {
+                            for (let wc = 0; wc < windowCols; wc++) {
+                                if (Math.random() > 0.35) { // 65%窗户亮
+                                    const wx = startX + wc * 40;
+                                    const wy = startY + wr * 35;
+                                    // 窗户发光效果（两层：外层光晕+内层窗户）
+                                    this.add.rectangle(wx, wy, winW + 4, winH + 4, theme.windowColor, 0.2).setDepth(3);
+                                    this.add.rectangle(wx, wy, winW, winH, theme.windowColor, 0.7 + Math.random() * 0.3).setDepth(3);
+                                }
+                            }
+                        }
+                        
+                        // 保存建筑数据（用于碰撞检测）
+                        building.buildingData = { x, y, w, h };
+                        this.buildings.push(building);
+                        buildingCount++;
                     }
                 }
             }
-            
-            this.buildings.push(building);
         }
-        console.log('生成建筑:', buildingCount, '个');
+        
+        console.log('生成建筑:', buildingCount, '个（街区式布局）');
     }
     
     // 建筑物碰撞检测（圆形实体 vs 矩形建筑物，碰撞后推开实体）
