@@ -20,24 +20,28 @@ export class GameScene extends Phaser.Scene {
         soundManager.init();
         soundManager.updateSettings(gameState.data.settings);
         
-        // 显示加载中
-        const w = this.scale.width;
-        const h = this.scale.height;
-        this.loadingText = this.add.text(w / 2, h / 2, '加载中...', {
-            fontSize: '32px', color: '#4FC3F7', fontWeight: 'bold'
-        }).setOrigin(0.5).setDepth(9999).setScrollFactor(0);
+        // 异步加载 sprite sheet（不阻塞游戏启动，加载完成后角色自动显示）
+        SpriteLoader.loadAll(this);
         
-        // 先加载所有 sprite sheet 和动画，完成后再初始化游戏
-        SpriteLoader.loadAll(this, () => {
+        // 直接初始化游戏（不等待纹理加载）
+        this.initGame();
+        
+        // 超时兜底：3秒后如果加载中文字还在，强制移除
+        this.time.delayedCall(3000, () => {
             if (this.loadingText) {
                 this.loadingText.destroy();
                 this.loadingText = null;
             }
-            this.initGame();
         });
     }
     
     initGame() {
+        // 移除加载中文字
+        if (this.loadingText) {
+            this.loadingText.destroy();
+            this.loadingText = null;
+        }
+        
         this.gameState = 'playing';
         this.gameTime = 0;
         this.spawnTimer = 0;
@@ -333,7 +337,7 @@ export class GameScene extends Phaser.Scene {
         // 技能栏（屏幕底部）
         this.skillBar = [];
         const h = this.scale.height;
-        this.skillBarBg = this.add.rectangle(w/2, h - 30, w * 0.95, 45, 0x000000, 0.5)
+        this.skillBarBg = this.add.rectangle(w/2, h - 28, w * 0.95, 50, 0x000000, 0.5)
             .setScrollFactor(0).setDepth(998)
             .setStrokeStyle(1, 0x4FC3F7, 0.3);
         
@@ -911,11 +915,12 @@ export class GameScene extends Phaser.Scene {
         const w = this.scale.width;
         const h = this.scale.height;
         const maxShow = 8;
-        const slotSize = 36;
-        const gap = 4;
-        const totalWidth = Math.min(skills.length, maxShow) * (slotSize + gap) - gap;
-        const startX = w/2 - totalWidth/2 + slotSize/2;
-        const barY = h - 30;
+        const slotWidth = 70;
+        const slotHeight = 40;
+        const gap = 6;
+        const totalWidth = Math.min(skills.length, maxShow) * (slotWidth + gap) - gap;
+        const startX = w/2 - totalWidth/2 + slotWidth/2;
+        const barY = h - 28;
         
         // 只在技能数量变化时重建
         const skillCount = Math.min(skills.length, maxShow);
@@ -924,7 +929,7 @@ export class GameScene extends Phaser.Scene {
             if (this.skillBarElements) {
                 for (const el of this.skillBarElements) {
                     el.bg.destroy();
-                    el.text.destroy();
+                    el.nameText.destroy();
                     el.levelText.destroy();
                 }
             }
@@ -938,19 +943,20 @@ export class GameScene extends Phaser.Scene {
             
             for (let i = 0; i < skillCount; i++) {
                 const skill = skills[i];
-                const x = startX + i * (slotSize + gap);
+                const x = startX + i * (slotWidth + gap);
                 const color = skillColors[skill.name] || 0x666666;
                 
-                const bg = this.add.rectangle(x, barY, slotSize, slotSize, color, 0.6)
-                    .setScrollFactor(0).setDepth(999);
-                const text = this.add.text(x, barY - 2, skill.name.charAt(0), {
-                    fontSize: '16px', color: '#FFFFFF', fontWeight: 'bold'
+                const bg = this.add.rectangle(x, barY, slotWidth, slotHeight, color, 0.6)
+                    .setScrollFactor(0).setDepth(999)
+                    .setStrokeStyle(1, 0xFFFFFF, 0.4);
+                const nameText = this.add.text(x, barY - 8, skill.name, {
+                    fontSize: '11px', color: '#FFFFFF', fontWeight: 'bold'
                 }).setScrollFactor(0).setDepth(1000).setOrigin(0.5);
-                const levelText = this.add.text(x, barY + 12, 'Lv' + skill.level, {
-                    fontSize: '9px', color: '#FFFFFF'
+                const levelText = this.add.text(x, barY + 8, 'Lv.' + skill.level, {
+                    fontSize: '10px', color: '#FFFFFF'
                 }).setScrollFactor(0).setDepth(1000).setOrigin(0.5);
                 
-                this.skillBarElements.push({ bg, text, levelText, skillName: skill.name });
+                this.skillBarElements.push({ bg, nameText, levelText, skillName: skill.name });
             }
         }
         
@@ -960,15 +966,22 @@ export class GameScene extends Phaser.Scene {
             const skill = skills[i];
             if (!skill) continue;
             
-            el.levelText.setText('Lv' + skill.level);
+            el.levelText.setText('Lv.' + skill.level);
+            const skillColors = {
+                '能量弹': 0x4FC3F7, '飞刀': 0xBDBDBD, '火球': 0xFF7043,
+                '闪电': 0xFFEB3B, '灼烧光环': 0xFF9800, '追踪导弹': 0x9C27B0,
+                '冰锥术': 0x00BCD4, '旋风斩': 0x81C784
+            };
             if (skill.evolved) {
-                el.bg.setFillStyle(skillColors[skill.name] || 0x666666, 0.9);
+                el.bg.setFillStyle(skillColors[skill.name] || 0x666666, 0.95);
                 el.bg.setStrokeStyle(3, 0xFFD700, 0.9);
                 el.levelText.setColor('#FFD700');
+                el.nameText.setColor('#FFD700');
             } else {
                 el.bg.setFillStyle(skillColors[skill.name] || 0x666666, 0.6);
                 el.bg.setStrokeStyle(1, 0xFFFFFF, 0.4);
                 el.levelText.setColor('#FFFFFF');
+                el.nameText.setColor('#FFFFFF');
             }
         }
     }
