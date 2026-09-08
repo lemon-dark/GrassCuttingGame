@@ -852,8 +852,8 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
                 val srcX = col * EXPLOSION_FRAME_SIZE
                 val srcY = row * EXPLOSION_FRAME_SIZE
                 val src = Rect(srcX, srcY, srcX + EXPLOSION_FRAME_SIZE, srcY + EXPLOSION_FRAME_SIZE)
-                // 爆炸大小根据 maxRadius 调整
-                val size = exp.maxRadius * 2.5f
+                // 爆炸大小根据 maxRadius 调整（放大让特效更突出）
+                val size = exp.maxRadius * 4f
                 val dst = RectF(exp.x - size / 2, exp.y - size / 2, exp.x + size / 2, exp.y + size / 2)
                 paint.alpha = exp.alpha
                 canvas.drawBitmap(explosionSpriteSheet!!, src, dst, paint)
