@@ -243,6 +243,8 @@ export class Enemy {
     }
     
     destroy() {
+        if (this.destroyed) return; // 防重复销毁
+        this.destroyed = true;
         this.sprite.destroy();
         this.hpBarBg.destroy();
         this.hpBar.destroy();

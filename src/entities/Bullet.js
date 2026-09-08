@@ -147,6 +147,8 @@ export class Bullet {
     }
     
     destroy() {
+        if (this.destroyed) return; // 防重复销毁
+        this.destroyed = true;
         this.graphics.destroy();
         this.glow.destroy();
     }
@@ -207,6 +209,8 @@ export class XpGem {
     }
     
     destroy() {
+        if (this.destroyed) return; // 防重复销毁
+        this.destroyed = true;
         this.graphics.destroy();
         this.glow.destroy();
     }

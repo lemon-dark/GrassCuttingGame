@@ -1,4 +1,6 @@
 // 局内道具系统
+import { soundManager } from '../audio/SoundManager.js';
+
 export const ItemTypes = {
     HEAL: { 
         name: '回血药', 
@@ -147,7 +149,6 @@ export class Item {
                 scene.addBuff('ATTACK_SPEED', this.config.duration);
                 break;
             case 'GOLD':
-                scene.gameState = scene.gameState || {};
                 scene.addGold(50);
                 break;
             case 'XP_BIG':
@@ -159,11 +160,13 @@ export class Item {
                 break;
         }
         
-        scene.soundManager && scene.soundManager.play('pickup', 0.8);
+        soundManager.play('pickup', 0.8);
         this.destroy();
     }
     
     destroy() {
+        if (this.destroyed) return; // 防重复销毁
+        this.destroyed = true;
         this.alive = false;
         if (this.sprite) this.sprite.destroy();
         if (this.iconText) this.iconText.destroy();
