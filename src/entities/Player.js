@@ -125,6 +125,9 @@ export class Player {
         if (existing) {
             existing.upgrade();
         } else {
+            // 关键修复：新技能需要先 upgrade() 把 level 从 0 升到 1
+            // 否则 renderSkillEffects 中的 level > 0 检查会失败，技能不会渲染
+            skill.upgrade();
             this.skills.push(skill);
         }
     }
