@@ -416,7 +416,8 @@ export class GameScene extends Phaser.Scene {
         if (this.paused) return;
         
         // 更新技能预览动画（仅在升级界面时更新）
-        if (this.gameState === 'levelup' && this.skillPreviews && this.skillPreviews.length > 0) {
+        // 暂时禁用，排查无限刷新问题
+        if (false && this.gameState === 'levelup' && this.skillPreviews && this.skillPreviews.length > 0) {
             try {
                 for (const preview of this.skillPreviews) {
                     if (preview.graphics && preview.graphics.active) {
