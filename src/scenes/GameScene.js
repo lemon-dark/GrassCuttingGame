@@ -6,7 +6,7 @@ import { Bullet, XpGem } from '../entities/Bullet.js';
 import { Item, ItemTypes, BuffManager } from '../entities/Item.js';
 import { RelicTypes, RelicManager } from '../entities/Relic.js';
 import { ExtraFeaturesManager, UltimateSkills, ShopItems } from '../systems/ExtraFeatures.js';
-import { SkillFactory, KnifeSkill, FireballSkill, LightningSkill, AuraSkill, MissileSkill, IceSpikeSkill, WhirlwindSkill } from '../skills/Skills.js';
+import { SkillFactory, KnifeSkill, FireballSkill, LightningSkill, AuraSkill, MissileSkill, IceSpikeSkill, WhirlwindSkill, KnockbackSkill, LifestealSkill } from '../skills/Skills.js';
 import { gameState } from '../state/GameState.js';
 import { soundManager } from '../audio/SoundManager.js';
 import { BackgroundImages } from '../assets/backgrounds.js';
@@ -167,15 +167,18 @@ export class GameScene extends Phaser.Scene {
             this.togglePause();
         });
         
-        // 大招按钮（右下角）
+        // 大招按钮（右下角）- 已取消
         this.ultimateBtn = this.add.circle(w - 60, this.scale.height - 80, 35, 0x9C27B0, 0.8)
             .setScrollFactor(0).setDepth(999)
             .setStrokeStyle(3, 0xFFD700, 0.8)
-            .setInteractive({ useHandCursor: true });
+            .setInteractive({ useHandCursor: true })
+            .setVisible(false);
         this.ultimateText = this.add.text(w - 60, this.scale.height - 80, '☄️', { fontSize: '24px' })
-            .setScrollFactor(0).setDepth(1000).setOrigin(0.5);
+            .setScrollFactor(0).setDepth(1000).setOrigin(0.5)
+            .setVisible(false);
         this.ultimateCooldownText = this.add.text(w - 60, this.scale.height - 80, '', { fontSize: '14px', color: '#FFFFFF', fontWeight: 'bold' })
-            .setScrollFactor(0).setDepth(1001).setOrigin(0.5);
+            .setScrollFactor(0).setDepth(1001).setOrigin(0.5)
+            .setVisible(false);
         this.ultimateBtn.on('pointerdown', () => {
             if (this.extraFeatures.castUltimate()) {
                 soundManager.play('boss');
@@ -305,6 +308,37 @@ export class GameScene extends Phaser.Scene {
             this.buildings.push(building);
         }
         console.log('生成建筑:', buildingCount, '个');
+    }
+    
+    // 建筑物碰撞检测（圆形实体 vs 矩形建筑物，碰撞后推开实体）
+    checkBuildingCollision(entity, radius) {
+        if (!this.buildings || this.buildings.length === 0) return;
+        for (const building of this.buildings) {
+            if (!building.active) continue;
+            const bx = building.x;
+            const by = building.y;
+            const bw = building.width / 2;
+            const bh = building.height / 2;
+            // 找到矩形上离圆心最近的点
+            const closestX = Math.max(bx - bw, Math.min(entity.x, bx + bw));
+            const closestY = Math.max(by - bh, Math.min(entity.y, by + bh));
+            // 计算圆心到最近点的距离
+            const dx = entity.x - closestX;
+            const dy = entity.y - closestY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            // 如果距离小于半径，发生碰撞
+            if (dist < radius) {
+                if (dist > 0) {
+                    // 把实体从建筑物中推开
+                    const push = radius - dist;
+                    entity.x += (dx / dist) * push;
+                    entity.y += (dy / dist) * push;
+                } else {
+                    // 圆心在矩形中心，随机方向推开
+                    entity.x += radius;
+                }
+            }
+        }
     }
     
     setupInput() {
@@ -452,6 +486,9 @@ export class GameScene extends Phaser.Scene {
                 
                 this.player.update(dt);
             
+            // 玩家与建筑物碰撞检测
+            this.checkBuildingCollision(this.player, this.player.radius);
+            
             // 更新所有技能（关键：之前缺失，导致所有技能都没有实装）
             for (const skill of this.player.skills) {
                 skill.update(this.player, this, dt);
@@ -474,6 +511,8 @@ export class GameScene extends Phaser.Scene {
             // 更新怪物
             for (const enemy of this.enemies) {
                 enemy.update(dt, this.player);
+                // 敌人与建筑物碰撞检测
+                this.checkBuildingCollision(enemy, enemy.radius);
                 if (enemy.alive && Math.hypot(enemy.x - this.player.x, enemy.y - this.player.y) < enemy.radius + this.player.radius) {
                     const dead = this.player.takeDamage(enemy.damage);
                     soundManager.play('hurt', 0.6);
@@ -538,9 +577,21 @@ export class GameScene extends Phaser.Scene {
                         const skillName = bullet.skillName || '普通攻击';
                         this.damageStats.bySkill[skillName] = (this.damageStats.bySkill[skillName] || 0) + dmg;
                         
+                        // 击退（集成击退技能和不同怪物类型的击退系数）
+                        const knockbackSkill = this.player.getSkill('击退强化');
+                        const knockbackMultiplier = knockbackSkill ? knockbackSkill.knockbackMultiplier : 1;
+                        const enemyKnockbackFactor = KnockbackSkill.getEnemyKnockbackFactor(enemy.type);
+                        const baseKnockback = isCrit ? 300 : 150;
+                        const finalKnockback = baseKnockback * knockbackMultiplier * enemyKnockbackFactor;
                         const angle = Math.atan2(bullet.vy, bullet.vx);
-                        enemy.knockbackX += Math.cos(angle) * (isCrit ? 300 : 150);
-                        enemy.knockbackY += Math.sin(angle) * (isCrit ? 300 : 150);
+                        enemy.knockbackX += Math.cos(angle) * finalKnockback;
+                        enemy.knockbackY += Math.sin(angle) * finalKnockback;
+                        
+                        // 吸血（生命汲取技能）
+                        const lifestealSkill = this.player.getSkill('生命汲取');
+                        if (lifestealSkill && lifestealSkill.level > 0) {
+                            lifestealSkill.onDamageDealt(this.player, this, dmg);
+                        }
                         
                         this.addFloatingText(enemy.x, enemy.y - enemy.radius, Math.floor(dmg).toString(), isCrit ? 0xFFD700 : 0xFFFFFF, isCrit ? 28 : 18, isCrit);
                         this.spawnHitParticles(enemy.x, enemy.y, isCrit);

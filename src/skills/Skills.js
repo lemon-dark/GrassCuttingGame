@@ -97,6 +97,7 @@ export class KnifeSkill extends Skill {
         super('飞刀', 8);
         this.orbitingKnives = [];
         this.shootTimer = 0;
+        this.baseAngle = 0; // 基础旋转角度，所有飞刀共用
     }
     
     get knifeCount() {
@@ -111,23 +112,27 @@ export class KnifeSkill extends Skill {
         return 80 + this.level * 10;
     }
     
+    get rotationSpeed() {
+        return 2 + this.level * 0.3;
+    }
+    
     update(player, scene, dt) {
         super.update(player, scene, dt);
         // 维护环绕飞刀数量
         while (this.orbitingKnives.length < this.knifeCount) {
-            this.orbitingKnives.push({
-                angle: Math.random() * Math.PI * 2,
-                speed: 2 + this.level * 0.3
-            });
+            this.orbitingKnives.push({ hitEnemies: new Set() });
         }
         while (this.orbitingKnives.length > this.knifeCount) {
             this.orbitingKnives.pop();
         }
-        // 更新飞刀位置和碰撞
-        for (const knife of this.orbitingKnives) {
-            knife.angle += knife.speed * dt;
-            const kx = player.x + Math.cos(knife.angle) * this.orbitRadius;
-            const ky = player.y + Math.sin(knife.angle) * this.orbitRadius;
+        // 更新基础旋转角度
+        this.baseAngle += this.rotationSpeed * dt;
+        // 更新飞刀位置（均匀分布，每把飞刀角度相差 2π/knifeCount）
+        for (let i = 0; i < this.orbitingKnives.length; i++) {
+            const knife = this.orbitingKnives[i];
+            const angle = this.baseAngle + (i / this.knifeCount) * Math.PI * 2;
+            const kx = player.x + Math.cos(angle) * this.orbitRadius;
+            const ky = player.y + Math.sin(angle) * this.orbitRadius;
             knife.x = kx; knife.y = ky;
             // 碰撞敌人
             for (const e of scene.enemies) {
@@ -470,7 +475,9 @@ export const SkillFactory = {
             new AuraSkill(),
             new MissileSkill(),
             new IceSpikeSkill(),
-            new WhirlwindSkill()
+            new WhirlwindSkill(),
+            new KnockbackSkill(),
+            new LifestealSkill()
         ];
     },
     
@@ -483,8 +490,69 @@ export const SkillFactory = {
             '灼烧光环': AuraSkill,
             '追踪导弹': MissileSkill,
             '冰锥术': IceSpikeSkill,
-            '旋风斩': WhirlwindSkill
+            '旋风斩': WhirlwindSkill,
+            '击退强化': KnockbackSkill,
+            '生命汲取': LifestealSkill
         };
         return map[name] ? new map[name]() : null;
     }
 };
+
+// 9. 击退强化（被动技能，增加所有攻击的击退效果）
+export class KnockbackSkill extends Skill {
+    constructor() {
+        super('击退强化', 5);
+    }
+    
+    get knockbackMultiplier() {
+        return 1 + this.level * 0.5; // 每级增加50%击退
+    }
+    
+    // 不同怪物类型的击退系数
+    static getEnemyKnockbackFactor(enemyType) {
+        const factors = {
+            'NORMAL': 1.0,    // 小怪：正常击退
+            'FAST': 0.8,      // 快速怪：击退减少20%
+            'TANK': 0.4,      // 坦克怪：击退减少60%
+            'ELITE': 0.3,     // 精英怪：击退减少70%
+            'BOSS': 0.05      // BOSS：几乎不击退
+        };
+        return factors[enemyType] !== undefined ? factors[enemyType] : 1.0;
+    }
+    
+    update(player, scene, dt) {
+        super.update(player, scene, dt);
+        // 被动技能，不需要主动更新
+    }
+}
+
+// 10. 生命汲取（被动技能，攻击敌人时回复生命值）
+export class LifestealSkill extends Skill {
+    constructor() {
+        super('生命汲取', 5);
+        this.healCooldown = 0;
+    }
+    
+    get lifestealPercent() {
+        return 0.05 + this.level * 0.03; // 5% + 每级3%
+    }
+    
+    get maxHealPerHit() {
+        return 5 + this.level * 3; // 每次命中最多回复的生命值
+    }
+    
+    // 造成伤害时触发吸血
+    onDamageDealt(player, scene, damage) {
+        if (this.level <= 0) return;
+        const healAmount = Math.min(damage * this.lifestealPercent, this.maxHealPerHit);
+        if (healAmount > 0) {
+            player.hp = Math.min(player.maxHp, player.hp + healAmount);
+            scene.addFloatingText(player.x, player.y - 30, '+' + Math.floor(healAmount), 0x4CAF50, 14);
+        }
+    }
+    
+    update(player, scene, dt) {
+        super.update(player, scene, dt);
+        // 被动技能，不需要主动更新
+    }
+}
