@@ -130,7 +130,7 @@ export class Item {
             case 'HEAL':
                 const healAmount = player.maxHp * 0.3;
                 player.hp = Math.min(player.maxHp, player.hp + healAmount);
-                scene.showFloatingText(player.x, player.y - 30, '+' + Math.floor(healAmount), 0x4CAF50);
+                scene.addFloatingText(player.x, player.y - 30, '+' + Math.floor(healAmount), 0x4CAF50, 18);
                 break;
             case 'INVINCIBLE':
                 player.invincibleTimer = Math.max(player.invincibleTimer, this.config.duration);
@@ -156,7 +156,7 @@ export class Item {
                 if (scene.player.gainXp(xpGain)) {
                     scene.showLevelUp();
                 }
-                scene.showFloatingText(player.x, player.y - 30, '+' + xpGain + ' XP', 0x00BCD4);
+                scene.addFloatingText(player.x, player.y - 30, '+' + xpGain + ' XP', 0x00BCD4, 18);
                 break;
         }
         

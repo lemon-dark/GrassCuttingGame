@@ -1312,7 +1312,7 @@ export class GameScene extends Phaser.Scene {
         this.buffManager.add(type, duration);
         const config = ItemTypes[type];
         if (config) {
-            this.showFloatingText(this.player.x, this.player.y - 50, config.name + '!', config.color);
+            this.addFloatingText(this.player.x, this.player.y - 50, config.name + '!', config.color, 18);
         }
     }
     
@@ -1344,7 +1344,7 @@ export class GameScene extends Phaser.Scene {
     addGold(amount) {
         gameState.data.gold = (gameState.data.gold || 0) + amount;
         gameState.save();
-        this.showFloatingText(this.player.x, this.player.y - 50, '+' + amount + ' 金币', 0xFFC107);
+        this.addFloatingText(this.player.x, this.player.y - 50, '+' + amount + ' 金币', 0xFFC107, 18);
     }
     
     gameOver() {

@@ -25,7 +25,7 @@ export const GameConfig = {
     // 怪物
     ENEMY_TYPES: {
         NORMAL: { hp: 30, speed: 60, damage: 5, radius: 20, xp: 1, color: 0x66BB6A, name: '普通怪' },
-        FAST: { hp: 15, speed: 120, damage: 3, radius: 15, xp: 2, color: 0xFFEE58, name: '快速怪' },
+        FAST: { hp: 15, speed: 85, damage: 3, radius: 15, xp: 2, color: 0xFFEE58, name: '快速怪' },
         TANK: { hp: 80, speed: 35, damage: 10, radius: 30, xp: 3, color: 0xEF5350, name: '坦克怪' },
         ELITE: { hp: 200, speed: 50, damage: 15, radius: 35, xp: 10, color: 0xAB47BC, name: '精英怪' },
         BOSS: { hp: 1000, speed: 40, damage: 25, radius: 50, xp: 50, color: 0xFF6D00, name: 'Boss' }

@@ -101,7 +101,7 @@ export class Enemy {
         if (dist > 0) {
             const speed = this.speed * this.slowFactor;
             // 自爆怪接近玩家时加速
-            const speedMult = this.abilities.includes('explode') && dist < 150 ? 1.8 : 1;
+            const speedMult = this.abilities.includes('explode') && dist < 150 ? 1.4 : 1;
             this.x += (dx / dist) * speed * speedMult * dt;
             this.y += (dy / dist) * speed * speedMult * dt;
         }
