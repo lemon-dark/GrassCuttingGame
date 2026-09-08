@@ -393,14 +393,15 @@ export class GameScene extends Phaser.Scene {
         if (this.paused) return;
         
         if (this.gameState === 'playing') {
-            this.gameTime += dt;
-            
-            if (this.gameTime >= GameConfig.GAME_DURATION) {
-                this.victory();
-                return;
-            }
-            
-            this.player.update(dt);
+            try {
+                this.gameTime += dt;
+                
+                if (this.gameTime >= GameConfig.GAME_DURATION) {
+                    this.victory();
+                    return;
+                }
+                
+                this.player.update(dt);
             
             // 更新所有技能（关键：之前缺失，导致所有技能都没有实装）
             for (const skill of this.player.skills) {
@@ -579,6 +580,11 @@ export class GameScene extends Phaser.Scene {
             
             this.cleanupEntities();
             this.updateHUD();
+            } catch (e) {
+                console.error('游戏更新错误:', e);
+                // 错误后继续游戏，不完全卡死
+                this.gameState = 'playing';
+            }
         }
     }
     
