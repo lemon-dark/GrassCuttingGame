@@ -415,18 +415,6 @@ export class GameScene extends Phaser.Scene {
         
         if (this.paused) return;
         
-        // 命中停顿系统：击杀时短暂冻结游戏，增强打击感
-        if (this.hitStop > 0) {
-            this.hitStop -= dt;
-            dt = 0;  // 游戏逻辑完全冻结
-            // 但屏幕震动继续（如果有的话）
-        }
-        // BOSS击杀慢动作：时间减速到30%
-        if (this.slowMotion > 0) {
-            this.slowMotion -= delta / 1000;
-            dt *= 0.3;
-        }
-        
         // 更新技能预览动画（仅在升级界面时更新）
         if (this.gameState === 'levelup' && this.skillPreviews && this.skillPreviews.length > 0) {
             for (const preview of this.skillPreviews) {
@@ -436,6 +424,18 @@ export class GameScene extends Phaser.Scene {
         }
         
         if (this.gameState === 'playing') {
+            // 命中停顿系统：击杀时短暂冻结游戏，增强打击感
+            // 关键修复：用原始delta/1000减少hitStop，否则dt=0时hitStop永远不会减少，导致游戏永久卡死
+            if (this.hitStop > 0) {
+                this.hitStop -= delta / 1000;
+                dt = 0;  // 游戏逻辑完全冻结
+            }
+            // BOSS击杀慢动作：时间减速到30%
+            if (this.slowMotion > 0) {
+                this.slowMotion -= delta / 1000;
+                dt *= 0.3;
+            }
+            
             try {
                 this.gameTime += dt;
                 
