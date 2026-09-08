@@ -43,54 +43,85 @@ export class Bullet {
             this.graphics.fillCircle(this.x, this.y, this.radius * 0.5);
         } else if (this.type === 'knife') {
             const angle = Math.atan2(this.vy, this.vx);
-            this.graphics.save();
-            this.graphics.translate(this.x, this.y);
-            this.graphics.rotate(angle);
+            const cos = Math.cos(angle), sin = Math.sin(angle);
+            const r = this.radius;
+            // 直接计算旋转后坐标，不用translate/rotate（Phaser Graphics没有translate方法）
+            const p1x = this.x + (r * 2 * cos - 0 * sin);
+            const p1y = this.y + (r * 2 * sin + 0 * cos);
+            const p2x = this.x + (0 * cos - r * 0.6 * sin);
+            const p2y = this.y + (0 * sin + r * 0.6 * cos);
+            const p3x = this.x + (-r * cos - 0 * sin);
+            const p3y = this.y + (-r * sin + 0 * cos);
+            const p4x = this.x + (0 * cos - (-r * 0.6) * sin);
+            const p4y = this.y + (0 * sin + (-r * 0.6) * cos);
             this.graphics.fillStyle(this.color.main, 1);
             this.graphics.beginPath();
-            this.graphics.moveTo(this.radius * 2, 0);
-            this.graphics.lineTo(0, this.radius * 0.6);
-            this.graphics.lineTo(-this.radius, 0);
-            this.graphics.lineTo(0, -this.radius * 0.6);
+            this.graphics.moveTo(p1x, p1y);
+            this.graphics.lineTo(p2x, p2y);
+            this.graphics.lineTo(p3x, p3y);
+            this.graphics.lineTo(p4x, p4y);
             this.graphics.closePath();
             this.graphics.fillPath();
-            this.graphics.restore();
         } else if (this.type === 'missile') {
             const angle = Math.atan2(this.vy, this.vx);
-            this.graphics.save();
-            this.graphics.translate(this.x, this.y);
-            this.graphics.rotate(angle);
-            // 尾焰
+            const cos = Math.cos(angle), sin = Math.sin(angle);
+            const r = this.radius;
+            const rotatePoint = (px, py) => ({
+                x: this.x + (px * cos - py * sin),
+                y: this.y + (px * sin + py * cos)
+            });
+            // 尾焰（圆形，直接计算旋转后圆心）
+            const tailCenter = rotatePoint(-r * 1.5, 0);
             this.graphics.fillStyle(0xFF5722, 0.6);
-            this.graphics.fillCircle(-this.radius * 1.5, 0, this.radius * 0.8);
-            // 弹体
+            this.graphics.fillCircle(tailCenter.x, tailCenter.y, r * 0.8);
+            // 弹体（矩形4个顶点）
+            const b1 = rotatePoint(-r, -r * 0.5);
+            const b2 = rotatePoint(r, -r * 0.5);
+            const b3 = rotatePoint(r, r * 0.5);
+            const b4 = rotatePoint(-r, r * 0.5);
             this.graphics.fillStyle(this.color.main, 1);
-            this.graphics.fillRect(-this.radius, -this.radius * 0.5, this.radius * 2, this.radius);
-            // 弹头
+            this.graphics.beginPath();
+            this.graphics.moveTo(b1.x, b1.y);
+            this.graphics.lineTo(b2.x, b2.y);
+            this.graphics.lineTo(b3.x, b3.y);
+            this.graphics.lineTo(b4.x, b4.y);
+            this.graphics.closePath();
+            this.graphics.fillPath();
+            // 弹头（三角形3个顶点）
+            const h1 = rotatePoint(r * 2, 0);
+            const h2 = rotatePoint(r, -r * 0.5);
+            const h3 = rotatePoint(r, r * 0.5);
             this.graphics.fillStyle(0xFF5722, 1);
             this.graphics.beginPath();
-            this.graphics.moveTo(this.radius * 2, 0);
-            this.graphics.lineTo(this.radius, -this.radius * 0.5);
-            this.graphics.lineTo(this.radius, this.radius * 0.5);
+            this.graphics.moveTo(h1.x, h1.y);
+            this.graphics.lineTo(h2.x, h2.y);
+            this.graphics.lineTo(h3.x, h3.y);
             this.graphics.closePath();
             this.graphics.fillPath();
-            this.graphics.restore();
         } else if (this.type === 'ice_spike') {
             const angle = Math.atan2(this.vy, this.vx);
-            this.graphics.save();
-            this.graphics.translate(this.x, this.y);
-            this.graphics.rotate(angle);
+            const cos = Math.cos(angle), sin = Math.sin(angle);
+            const r = this.radius;
+            const rotatePoint = (px, py) => ({
+                x: this.x + (px * cos - py * sin),
+                y: this.y + (px * sin + py * cos)
+            });
+            // 光晕（圆形，圆心就是子弹位置，不需要旋转）
             this.graphics.fillStyle(this.color.glow, 0.4);
-            this.graphics.fillCircle(0, 0, this.radius * 1.5);
+            this.graphics.fillCircle(this.x, this.y, r * 1.5);
+            // 冰锥四边形4个顶点
+            const p1 = rotatePoint(r * 2, 0);
+            const p2 = rotatePoint(-r * 0.5, r * 0.8);
+            const p3 = rotatePoint(-r, 0);
+            const p4 = rotatePoint(-r * 0.5, -r * 0.8);
             this.graphics.fillStyle(this.color.main, 1);
             this.graphics.beginPath();
-            this.graphics.moveTo(this.radius * 2, 0);
-            this.graphics.lineTo(-this.radius * 0.5, this.radius * 0.8);
-            this.graphics.lineTo(-this.radius, 0);
-            this.graphics.lineTo(-this.radius * 0.5, -this.radius * 0.8);
+            this.graphics.moveTo(p1.x, p1.y);
+            this.graphics.lineTo(p2.x, p2.y);
+            this.graphics.lineTo(p3.x, p3.y);
+            this.graphics.lineTo(p4.x, p4.y);
             this.graphics.closePath();
             this.graphics.fillPath();
-            this.graphics.restore();
         } else {
             this.graphics.fillStyle(this.color.glow, 0.4);
             this.graphics.fillCircle(this.x, this.y, this.radius * 1.5);

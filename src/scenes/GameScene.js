@@ -669,24 +669,29 @@ export class GameScene extends Phaser.Scene {
         if (knifeSkill && knifeSkill.level > 0) {
             for (const knife of knifeSkill.orbitingKnives) {
                 if (knife.x !== undefined) {
-                    // 用graphics绘制飞刀
+                    // 用graphics绘制飞刀（直接计算旋转坐标，不用translate/rotate）
                     if (!knife.graphics) {
                         knife.graphics = this.add.graphics();
                     }
                     knife.graphics.clear();
                     const angle = Math.atan2(knife.y - this.player.y, knife.x - this.player.x);
-                    knife.graphics.save();
-                    knife.graphics.translate(knife.x, knife.y);
-                    knife.graphics.rotate(angle);
+                    const cos = Math.cos(angle), sin = Math.sin(angle);
+                    const rotatePoint = (px, py) => ({
+                        x: knife.x + (px * cos - py * sin),
+                        y: knife.y + (px * sin + py * cos)
+                    });
+                    const p1 = rotatePoint(15, 0);
+                    const p2 = rotatePoint(0, 5);
+                    const p3 = rotatePoint(-8, 0);
+                    const p4 = rotatePoint(0, -5);
                     knife.graphics.fillStyle(0xE0E0E0, 1);
                     knife.graphics.beginPath();
-                    knife.graphics.moveTo(15, 0);
-                    knife.graphics.lineTo(0, 5);
-                    knife.graphics.lineTo(-8, 0);
-                    knife.graphics.lineTo(0, -5);
+                    knife.graphics.moveTo(p1.x, p1.y);
+                    knife.graphics.lineTo(p2.x, p2.y);
+                    knife.graphics.lineTo(p3.x, p3.y);
+                    knife.graphics.lineTo(p4.x, p4.y);
                     knife.graphics.closePath();
                     knife.graphics.fillPath();
-                    knife.graphics.restore();
                 }
             }
         }
@@ -711,18 +716,23 @@ export class GameScene extends Phaser.Scene {
                 if (blade.x !== undefined) {
                     if (!blade.graphics) blade.graphics = this.add.graphics();
                     blade.graphics.clear();
-                    const angle = Math.atan2(blade.y - this.player.y, blade.x - this.player.x);
-                    blade.graphics.save();
-                    blade.graphics.translate(blade.x, blade.y);
-                    blade.graphics.rotate(angle + Math.PI / 2);
+                    const angle = Math.atan2(blade.y - this.player.y, blade.x - this.player.x) + Math.PI / 2;
+                    const cos = Math.cos(angle), sin = Math.sin(angle);
+                    const rotatePoint = (px, py) => ({
+                        x: blade.x + (px * cos - py * sin),
+                        y: blade.y + (px * sin + py * cos)
+                    });
+                    // 风刃三角形
+                    const p1 = rotatePoint(0, -20);
+                    const p2 = rotatePoint(8, 10);
+                    const p3 = rotatePoint(-8, 10);
                     blade.graphics.fillStyle(0x80DEEA, 0.8);
                     blade.graphics.beginPath();
-                    blade.graphics.moveTo(0, -20);
-                    blade.graphics.lineTo(8, 10);
-                    blade.graphics.lineTo(-8, 10);
+                    blade.graphics.moveTo(p1.x, p1.y);
+                    blade.graphics.lineTo(p2.x, p2.y);
+                    blade.graphics.lineTo(p3.x, p3.y);
                     blade.graphics.closePath();
                     blade.graphics.fillPath();
-                    blade.graphics.restore();
                 }
             }
         }
@@ -1028,8 +1038,8 @@ export class GameScene extends Phaser.Scene {
             const alpha = p.life / p.maxLife;
             p.graphics.setPosition(p.x, p.y);
             p.graphics.setAlpha(alpha);
-            // 贴图粒子用 size/20 作为基础缩放，circle 粒子用 size/3
-            const scale = p.useTexture ? (p.size / 20) * alpha : (p.size / 3) * alpha;
+            // 贴图粒子用 size/80 作为基础缩放（粒子贴图原始512x512，避免太大），circle 粒子用 size/3
+            const scale = p.useTexture ? (p.size / 80) * alpha : (p.size / 3) * alpha;
             p.graphics.setScale(scale);
         }
     }
