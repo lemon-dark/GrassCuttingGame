@@ -539,7 +539,7 @@ class GameView(context: Context, attrs: AttributeSet? = null) : SurfaceView(cont
         val p = world.player
         val alpha = if (p.invincibleTimer > 0 && (p.invincibleTimer * 20).toInt() % 2 == 0) 100 else 255
         val visualRadius = p.radius * GameConfig.VISUAL_PLAYER_SCALE
-        drawCharacter(canvas, playerSheetBmp, p.x, p.y, visualRadius, p.animFrame, p.facingRight, alpha, frameCount = 8)
+        drawCharacter(canvas, playerSheetBmp, p.x, p.y, visualRadius, p.animFrame, p.facingRight, alpha)
     }
 
     // ============ 子弹 ============
