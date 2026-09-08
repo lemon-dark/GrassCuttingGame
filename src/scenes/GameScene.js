@@ -392,6 +392,14 @@ export class GameScene extends Phaser.Scene {
         
         if (this.paused) return;
         
+        // 更新技能预览动画（升级界面时也需要更新）
+        if (this.skillPreviews && this.skillPreviews.length > 0) {
+            for (const preview of this.skillPreviews) {
+                preview.time += dt;
+                this.drawSkillPreview(preview);
+            }
+        }
+        
         if (this.gameState === 'playing') {
             try {
                 this.gameTime += dt;
@@ -1135,15 +1143,17 @@ export class GameScene extends Phaser.Scene {
         const w = this.scale.width;
         const h = this.scale.height;
         const cardW = w * 0.25;
-        const cardH = h * 0.3;
+        const cardH = h * 0.35;  // 稍微加高，给预览动画留空间
         const gap = w * 0.05;
         const startX = w / 2 - cardW - gap / 2;
         
         this.levelUpCards = [];
+        this.skillPreviews = [];  // 技能预览动画列表
+        
         for (let i = 0; i < this.levelUpOptions.length; i++) {
             const option = this.levelUpOptions[i];
             const x = startX + i * (cardW + gap);
-            const y = h * 0.45;
+            const y = h * 0.48;
             
             const cardColor = option.type === 'skill' ? 0x1A237E : option.type === 'relic' ? 0x4A148C : 0x1B5E20;
             const borderColor = option.type === 'skill' ? 0x4FC3F7 : option.type === 'relic' ? 0xCE93D8 : 0x66BB6A;
@@ -1161,10 +1171,227 @@ export class GameScene extends Phaser.Scene {
                 this.gameState = 'playing';
             });
             
-            this.add.text(x, y - cardH * 0.25, option.name, { fontSize: '20px', color: textColor, fontWeight: 'bold' }).setScrollFactor(0).setDepth(3002).setOrigin(0.5);
-            this.add.text(x, y + cardH * 0.1, option.desc, { fontSize: '13px', color: '#FFFFFF', align: 'center', wordWrap: { width: cardW * 0.8 } }).setScrollFactor(0).setDepth(3002).setOrigin(0.5);
+            // 技能名称（顶部）
+            this.add.text(x, y - cardH * 0.35, option.name, { fontSize: '18px', color: textColor, fontWeight: 'bold' }).setScrollFactor(0).setDepth(3002).setOrigin(0.5);
+            
+            // 技能预览动画区域（中间）
+            if (option.type === 'skill') {
+                const previewGraphics = this.add.graphics().setScrollFactor(0).setDepth(3002);
+                const previewData = {
+                    graphics: previewGraphics,
+                    skillName: option.skill.name,
+                    centerX: x,
+                    centerY: y - cardH * 0.05,
+                    size: Math.min(cardW * 0.35, 50),
+                    time: 0
+                };
+                this.skillPreviews.push(previewData);
+            }
+            
+            // 技能描述（底部）
+            this.add.text(x, y + cardH * 0.28, option.desc, { fontSize: '12px', color: '#FFFFFF', align: 'center', wordWrap: { width: cardW * 0.8 } }).setScrollFactor(0).setDepth(3002).setOrigin(0.5);
             
             this.levelUpCards.push(card);
+        }
+    }
+    
+    // 绘制技能预览动画
+    drawSkillPreview(preview) {
+        const g = preview.graphics;
+        const cx = preview.centerX;
+        const cy = preview.centerY;
+        const s = preview.size;
+        const t = preview.time;
+        
+        g.clear();
+        
+        switch (preview.skillName) {
+            case '能量弹': {
+                // 3个小球围绕中心旋转并射出
+                for (let i = 0; i < 3; i++) {
+                    const angle = t * 2 + i * (Math.PI * 2 / 3);
+                    const dist = s * (0.3 + (Math.sin(t * 3 + i) + 1) * 0.35);
+                    const x = cx + Math.cos(angle) * dist;
+                    const y = cy + Math.sin(angle) * dist;
+                    g.fillStyle(0x4FC3F7, 0.9);
+                    g.fillCircle(x, y, 4);
+                    g.fillStyle(0x81D4FA, 0.4);
+                    g.fillCircle(x, y, 7);
+                }
+                break;
+            }
+            case '飞刀': {
+                // 3把飞刀围绕中心旋转
+                for (let i = 0; i < 3; i++) {
+                    const angle = t * 3 + i * (Math.PI * 2 / 3);
+                    const x = cx + Math.cos(angle) * s * 0.7;
+                    const y = cy + Math.sin(angle) * s * 0.7;
+                    g.save();
+                    g.translate(x, y);
+                    g.rotate(angle + Math.PI / 2);
+                    g.fillStyle(0xE0E0E0, 1);
+                    g.beginPath();
+                    g.moveTo(0, -8);
+                    g.lineTo(4, 4);
+                    g.lineTo(-4, 4);
+                    g.closePath();
+                    g.fillPath();
+                    g.restore();
+                }
+                break;
+            }
+            case '火球': {
+                // 火球射出+爆炸循环
+                const cycle = (t % 2) / 2;
+                if (cycle < 0.6) {
+                    // 射出阶段
+                    const dist = s * 0.2 + cycle * s * 1.2;
+                    const x = cx + dist;
+                    const y = cy;
+                    g.fillStyle(0xFFAB40, 0.5);
+                    g.fillCircle(x, y, 10);
+                    g.fillStyle(0xFF6D00, 1);
+                    g.fillCircle(x, y, 6);
+                    g.fillStyle(0xFFFF00, 0.8);
+                    g.fillCircle(x, y, 3);
+                } else {
+                    // 爆炸阶段
+                    const exp = (cycle - 0.6) / 0.4;
+                    const r = s * 0.3 + exp * s * 0.8;
+                    const alpha = 1 - exp;
+                    g.lineStyle(3, 0xFF6D00, alpha);
+                    g.strokeCircle(cx + s * 0.8, cy, r);
+                    g.fillStyle(0xFFAB40, alpha * 0.3);
+                    g.fillCircle(cx + s * 0.8, cy, r * 0.8);
+                }
+                break;
+            }
+            case '闪电': {
+                // 闪电周期性闪烁
+                const flash = Math.sin(t * 8) > 0;
+                if (flash) {
+                    for (let i = 0; i < 3; i++) {
+                        const angle = i * (Math.PI * 2 / 3) + t * 0.5;
+                        const ex = cx + Math.cos(angle) * s * 0.8;
+                        const ey = cy + Math.sin(angle) * s * 0.8;
+                        g.lineStyle(2, 0xFFFF00, 0.9);
+                        // 锯齿闪电
+                        let px = cx, py = cy;
+                        for (let j = 1; j <= 4; j++) {
+                            const tt = j / 4;
+                            const nx = cx + (ex - cx) * tt + (Math.random() - 0.5) * 8;
+                            const ny = cy + (ey - cy) * tt + (Math.random() - 0.5) * 8;
+                            g.lineBetween(px, py, nx, ny);
+                            px = nx; py = ny;
+                        }
+                    }
+                }
+                break;
+            }
+            case '灼烧光环': {
+                // 光环脉动
+                const pulse = 0.7 + Math.sin(t * 3) * 0.3;
+                g.lineStyle(3, 0xFF6D00, 0.6 * pulse);
+                g.strokeCircle(cx, cy, s * 0.6 * pulse);
+                g.fillStyle(0xFF6D00, 0.15 * pulse);
+                g.fillCircle(cx, cy, s * 0.6 * pulse);
+                // 中心角色点
+                g.fillStyle(0x4CAF50, 1);
+                g.fillCircle(cx, cy, 5);
+                break;
+            }
+            case '追踪导弹': {
+                // 3个导弹围绕中心旋转，带尾迹
+                for (let i = 0; i < 3; i++) {
+                    const angle = t * 2.5 + i * (Math.PI * 2 / 3);
+                    const x = cx + Math.cos(angle) * s * 0.7;
+                    const y = cy + Math.sin(angle) * s * 0.7;
+                    // 尾迹
+                    const tailAngle = angle - Math.PI * 0.3;
+                    g.lineStyle(3, 0xFF5722, 0.4);
+                    g.lineBetween(x, y, x + Math.cos(tailAngle) * 12, y + Math.sin(tailAngle) * 12);
+                    // 导弹
+                    g.save();
+                    g.translate(x, y);
+                    g.rotate(angle + Math.PI / 2);
+                    g.fillStyle(0x9E9E9E, 1);
+                    g.fillRect(-3, -6, 6, 10);
+                    g.fillStyle(0xFF5722, 1);
+                    g.beginPath();
+                    g.moveTo(0, -10);
+                    g.lineTo(3, -6);
+                    g.lineTo(-3, -6);
+                    g.closePath();
+                    g.fillPath();
+                    g.restore();
+                }
+                break;
+            }
+            case '冰锥术': {
+                // 3个冰锥从中心射出，循环
+                const cycle = (t % 1.5) / 1.5;
+                for (let i = 0; i < 3; i++) {
+                    const angle = i * (Math.PI * 2 / 3) + cycle * Math.PI;
+                    const dist = s * 0.2 + cycle * s * 0.7;
+                    const x = cx + Math.cos(angle) * dist;
+                    const y = cy + Math.sin(angle) * dist;
+                    const alpha = 1 - cycle * 0.5;
+                    g.save();
+                    g.translate(x, y);
+                    g.rotate(angle + Math.PI / 2);
+                    g.fillStyle(0x80DEEA, alpha);
+                    g.beginPath();
+                    g.moveTo(0, -10);
+                    g.lineTo(5, 6);
+                    g.lineTo(-5, 6);
+                    g.closePath();
+                    g.fillPath();
+                    g.fillStyle(0xB2EBF2, alpha * 0.6);
+                    g.beginPath();
+                    g.moveTo(0, -6);
+                    g.lineTo(2, 2);
+                    g.lineTo(-2, 2);
+                    g.closePath();
+                    g.fillPath();
+                    g.restore();
+                }
+                break;
+            }
+            case '旋风斩': {
+                // 3个风刃围绕中心快速旋转
+                for (let i = 0; i < 3; i++) {
+                    const angle = t * 5 + i * (Math.PI * 2 / 3);
+                    const x = cx + Math.cos(angle) * s * 0.7;
+                    const y = cy + Math.sin(angle) * s * 0.7;
+                    g.save();
+                    g.translate(x, y);
+                    g.rotate(angle + Math.PI / 2);
+                    g.fillStyle(0x81C784, 0.8);
+                    g.beginPath();
+                    g.moveTo(0, -12);
+                    g.lineTo(6, 8);
+                    g.lineTo(-6, 8);
+                    g.closePath();
+                    g.fillPath();
+                    g.fillStyle(0xA5D6A7, 0.5);
+                    g.beginPath();
+                    g.moveTo(0, -8);
+                    g.lineTo(3, 4);
+                    g.lineTo(-3, 4);
+                    g.closePath();
+                    g.fillPath();
+                    g.restore();
+                }
+                // 中心旋转气流
+                g.lineStyle(2, 0x81C784, 0.3);
+                g.strokeCircle(cx, cy, s * 0.3 + Math.sin(t * 8) * 3);
+                break;
+            }
+            default: {
+                // 默认：显示技能名称首字
+                g.fillStyle(0xFFFFFF, 0.5);
+                g.fillCircle(cx, cy, s * 0.4);
+            }
         }
     }
     
@@ -1173,6 +1400,13 @@ export class GameScene extends Phaser.Scene {
             for (const card of this.levelUpCards) {
                 card.destroy();
             }
+        }
+        // 销毁技能预览动画
+        if (this.skillPreviews) {
+            for (const preview of this.skillPreviews) {
+                if (preview.graphics) preview.graphics.destroy();
+            }
+            this.skillPreviews = [];
         }
         // 清除卡片文字（depth 3002的非按钮文字）
         this.children.list.filter(c => c.depth === 3002 && c !== this.rerollText).forEach(c => c.destroy());
