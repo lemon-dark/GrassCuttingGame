@@ -29,6 +29,9 @@ export class Bullet {
         // 创建图形
         this.graphics = scene.add.graphics().setDepth(8);
         this.glow = scene.add.circle(x, y, this.radius * 2, this.color.glow, 0.3).setDepth(7);
+        // 拖尾（延迟创建，等 fxManager 就绪）
+        this.trail = null;
+        this.trailColor = this.color.main;
         this.drawBullet();
     }
     
@@ -175,13 +178,26 @@ export class Bullet {
         
         this.drawBullet();
         this.glow.setPosition(this.x, this.y);
+
+        // 更新拖尾（使用 FXManager 的渐变拖尾系统，低画质时禁用）
+        if (this.scene.fx && this.scene.fx.trailsEnabled) {
+            if (!this.trail) {
+                this.trail = this.scene.fx.createTrail(this.trailColor, 10, this.radius * 0.8);
+            }
+            if (this.trail) {
+                this.scene.fx.updateTrail(this.trail, this.x, this.y);
+            }
+        }
     }
-    
+
     destroy() {
         if (this.destroyed) return; // 防重复销毁
         this.destroyed = true;
         this.graphics.destroy();
         this.glow.destroy();
+        if (this.trail && this.scene.fx) {
+            this.scene.fx.destroyTrail(this.trail);
+        }
     }
 }
 

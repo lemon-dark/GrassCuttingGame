@@ -6,6 +6,7 @@ import { Bullet, XpGem } from '../entities/Bullet.js';
 import { Item, ItemTypes, BuffManager } from '../entities/Item.js';
 import { RelicTypes, RelicManager } from '../entities/Relic.js';
 import { ExtraFeaturesManager, UltimateSkills, ShopItems } from '../systems/ExtraFeatures.js';
+import { FXManager } from '../systems/FXManager.js';
 import { SkillFactory, KnifeSkill, FireballSkill, LightningSkill, AuraSkill, MissileSkill, IceSpikeSkill, WhirlwindSkill, KnockbackSkill, LifestealSkill } from '../skills/Skills.js';
 import { gameState } from '../state/GameState.js';
 import { soundManager } from '../audio/SoundManager.js';
@@ -97,6 +98,10 @@ export class GameScene extends Phaser.Scene {
         this.buffManager = new BuffManager();
         this.relicManager = new RelicManager();
         this.extraFeatures = new ExtraFeaturesManager(this);
+        // 特效管理系统（Bloom发光、多层爆炸、分支闪电、粒子、屏幕特效）
+        this.fx = new FXManager(this);
+        // 设置默认画质（可在设置中切换 low/medium/high）
+        this.fx.setQuality('high');
         this.gold = 0;
         this.damageStats = { total: 0, bySkill: {}, startTime: 0 };
         // 波次事件
@@ -612,8 +617,9 @@ export class GameScene extends Phaser.Scene {
                     const dead = this.player.takeDamage(enemy.damage);
                     soundManager.play('hurt', 0.6);
                     soundManager.playVoice('hurt');
-                    // 受击屏幕震动
+                    // 受击屏幕震动 + 红屏
                     this.cameras.main.shake(100, 0.005);
+                    if (this.fx) this.fx.spawnDamageFlash();
                     if (dead) { this.gameOver(); return; }
                 }
             }
@@ -630,8 +636,9 @@ export class GameScene extends Phaser.Scene {
                     bullet.graphics.destroy();
                     const dead = this.player.takeDamage(bullet.damage);
                     soundManager.play('hurt', 0.5);
-                    // 受击屏幕震动
+                    // 受击屏幕震动 + 红屏
                     this.cameras.main.shake(80, 0.004);
+                    if (this.fx) this.fx.spawnDamageFlash();
                     if (dead) { this.gameOver(); return; }
                 }
                 // 超出地图销毁
@@ -792,11 +799,13 @@ export class GameScene extends Phaser.Scene {
                 }
             }
             
-            // 更新粒子
+            // 更新粒子（旧系统，保留兼容）
             this.updateParticles(dt);
             this.updateFloatingTexts(dt);
             this.updateLightningBolts(dt);
             this.updateExplosions(dt);
+            // FXManager 特效系统更新（新系统：Bloom发光、多层爆炸、分支闪电）
+            if (this.fx) this.fx.update(dt);
             
             // 渲染技能特效（飞刀/光环/旋风斩）
             this.renderSkillEffects();
@@ -1115,23 +1124,31 @@ export class GameScene extends Phaser.Scene {
     
     triggerExplosion(x, y, radius, color) {
         soundManager.play('explosion', 0.6);
-        this.explosions.push({ x, y, radius, color, life: 0.4, maxLife: 0.4 });
-        // 爆炸粒子
-        for (let i = 0; i < 15; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 100 + Math.random() * 200;
-            this.particles.push({
-                x, y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                color: Math.random() < 0.5 ? color : 0xFFFF00,
-                size: 4 + Math.random() * 5,
-                life: 0.4 + Math.random() * 0.3,
-                maxLife: 0.7,
-                graphics: this.add.circle(x, y, 4, color, 0.8).setDepth(12)
+        // 使用 FXManager 的多层爆炸（冲击波环+火球+烟雾+火花+Bloom发光）
+        if (this.fx) {
+            this.fx.spawnExplosion(x, y, radius, color, {
+                particleCount: Math.min(30, Math.floor(radius / 8) + 15),
+                shakeIntensity: 0.008,
+                withFlash: true,
+                ringCount: 3
             });
+        } else {
+            // 回退：旧的简单爆炸
+            this.explosions.push({ x, y, radius, color, life: 0.4, maxLife: 0.4 });
+            this.cameras.main.shake(100, 0.008);
         }
-        this.cameras.main.shake(100, 0.008);
+    }
+
+    /**
+     * 触发分支闪电特效（FXManager）
+     */
+    spawnLightning(x1, y1, x2, y2, color = 0xFFFF00, options = {}) {
+        if (this.fx) {
+            this.fx.spawnLightning(x1, y1, x2, y2, color, options);
+        } else {
+            // 回退：旧的简单闪电
+            this.lightningBolts.push({ x1, y1, x2, y2, life: 0.2, maxLife: 0.2, color });
+        }
     }
     
     updateExplosions(dt) {
@@ -1187,31 +1204,27 @@ export class GameScene extends Phaser.Scene {
     }
     
     spawnHitParticles(x, y, isCrit) {
-        const count = isCrit ? 10 : 5;
-        const textures = isCrit ? ['spark_01','spark_02','spark_03','star_01','muzzle_01'] : ['spark_01','spark_02','muzzle_01'];
-        for (let i = 0; i < count; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = 80 + Math.random() * 200;
-            const texKey = textures[Math.floor(Math.random() * textures.length)];
-            const size = 8 + Math.random() * 12;
-            // 优先用贴图，失败则回退到circle
-            let graphics;
-            if (this.particleTexturesLoaded && this.textures.exists(texKey)) {
-                graphics = this.add.image(x, y, texKey).setDepth(12).setTint(0xFFFF00);
-            } else {
-                graphics = this.add.circle(x, y, 3, 0xFFFF00, 0.8).setDepth(12);
+        // 使用 FXManager 的命中粒子（带 Bloom 发光 + 命中闪光）
+        if (this.fx) {
+            this.fx.spawnHitParticles(x, y, 0xFFFF00, isCrit);
+        } else {
+            // 回退：旧的简单粒子
+            const count = isCrit ? 10 : 5;
+            for (let i = 0; i < count; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 80 + Math.random() * 200;
+                this.particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    color: 0xFFFF00,
+                    size: 8 + Math.random() * 12,
+                    life: 0.3 + Math.random() * 0.2,
+                    maxLife: 0.5,
+                    graphics: this.add.circle(x, y, 3, 0xFFFF00, 0.8).setDepth(12),
+                    useTexture: false
+                });
             }
-            this.particles.push({
-                x, y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                color: 0xFFFF00,
-                size: size,
-                life: 0.3 + Math.random() * 0.2,
-                maxLife: 0.5,
-                graphics: graphics,
-                useTexture: this.particleTexturesLoaded && this.textures.exists(texKey)
-            });
         }
     }
     
@@ -1358,60 +1371,85 @@ export class GameScene extends Phaser.Scene {
         if (Math.random() < chestChance) {
             this.spawnChest(enemy.x, enemy.y);
         }
-        // === 战斗手感：击杀粒子特效（用Kenney贴图代替代码圆点）===
-        const particleCount = enemy.type === 'BOSS' ? 30 : enemy.type === 'ELITE' ? 18 : 10;
-        // 不同类型敌人用不同粒子贴图
-        let texPool;
-        if (enemy.type === 'BOSS') {
-            texPool = ['smoke_01','smoke_02','smoke_03','fire_01','flame_01','flame_02','magic_01','star_01','star_02','spark_01'];
-        } else if (enemy.type === 'ELITE') {
-            texPool = ['smoke_01','smoke_02','fire_01','flame_01','spark_01','spark_02','magic_01'];
-        } else {
-            texPool = ['smoke_01','smoke_02','spark_01','spark_02','light_01'];
-        }
-        const tintColors = enemy.type === 'BOSS' ? [0xFFD700, 0xFF6D00, 0xFF5722, 0xFFFFFF] :
-                           enemy.type === 'ELITE' ? [0xFFA500, 0xFF6D00, 0xFFFFFF] :
-                           [enemy.color, 0xFFFFFF, 0xFFEB3B];
-        
-        for (let i = 0; i < particleCount; i++) {
-            const angle = Math.random() * Math.PI * 2;
-            const speed = (60 + Math.random() * 180) * (enemy.type === 'BOSS' ? 1.5 : 1);
-            const color = tintColors[Math.floor(Math.random() * tintColors.length)];
-            const size = (10 + Math.random() * 15) * (enemy.type === 'BOSS' ? 1.3 : 1);
-            const texKey = texPool[Math.floor(Math.random() * texPool.length)];
-            // 优先用贴图，失败则回退到circle
-            let graphics;
-            let useTexture = false;
-            if (this.particleTexturesLoaded && this.textures.exists(texKey)) {
-                graphics = this.add.image(enemy.x, enemy.y, texKey).setDepth(12).setTint(color);
-                useTexture = true;
-            } else {
-                graphics = this.add.circle(enemy.x, enemy.y, size/3, color, 0.9).setDepth(12);
+        // === 战斗手感：击杀粒子特效（FXManager 带 Bloom 发光）===
+        const deathColor = enemy.type === 'BOSS' ? 0xFFD700 :
+                           enemy.type === 'ELITE' ? 0xFFA500 :
+                           (enemy.color || 0xFFEB3B);
+        const deathCount = enemy.type === 'BOSS' ? 25 : enemy.type === 'ELITE' ? 15 : 8;
+
+        if (this.fx) {
+            // 使用 FXManager 的命中粒子（带发光和拖尾）
+            for (let i = 0; i < deathCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = (80 + Math.random() * 200) * (enemy.type === 'BOSS' ? 1.5 : 1);
+                const pColor = Math.random() < 0.3 ? 0xFFFFFF : deathColor;
+                const pSize = 3 + Math.random() * 6;
+                const pLife = 0.4 + Math.random() * 0.4;
+
+                const img = this.add.image(enemy.x, enemy.y, this.fx.glowTextureKey)
+                    .setTint(pColor)
+                    .setBlendMode(Phaser.BlendModes.ADD)
+                    .setDepth(12)
+                    .setAlpha(0.9);
+                img.displayWidth = pSize * 3;
+                img.displayHeight = pSize * 3;
+
+                this.fx.particles.push({
+                    img,
+                    x: enemy.x, y: enemy.y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    color: pColor,
+                    size: pSize,
+                    life: pLife,
+                    maxLife: pLife,
+                    gravity: 100,
+                    drag: 0.93,
+                    hasTrail: Math.random() < 0.4
+                });
             }
-            this.particles.push({
-                x: enemy.x, y: enemy.y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                color: color,
-                size: size,
-                life: 0.4 + Math.random() * 0.4,
-                maxLife: 0.8,
-                graphics: graphics,
-                useTexture: useTexture
-            });
-        }
-        
-        // 精英/BOSS额外：冲击波圆环
-        if (enemy.type === 'ELITE' || enemy.type === 'BOSS') {
-            const ringRadius = enemy.type === 'BOSS' ? 150 : 80;
-            const ringColor = enemy.type === 'BOSS' ? 0xFFD700 : 0xFFA500;
-            this.explosions.push({
-                x: enemy.x, y: enemy.y,
-                radius: ringRadius,
-                color: ringColor,
-                life: 0.4, maxLife: 0.4,
-                graphics: null
-            });
+
+            // 精英/BOSS：多层爆炸冲击波
+            if (enemy.type === 'ELITE' || enemy.type === 'BOSS') {
+                const ringRadius = enemy.type === 'BOSS' ? 150 : 80;
+                this.fx.spawnExplosion(enemy.x, enemy.y, ringRadius, deathColor, {
+                    particleCount: 0,
+                    shakeIntensity: enemy.type === 'BOSS' ? 0.012 : 0.006,
+                    withFlash: enemy.type === 'BOSS',
+                    ringCount: enemy.type === 'BOSS' ? 4 : 2
+                });
+            }
+        } else {
+            // 回退：旧的粒子系统
+            const particleCount = enemy.type === 'BOSS' ? 30 : enemy.type === 'ELITE' ? 18 : 10;
+            const tintColors = enemy.type === 'BOSS' ? [0xFFD700, 0xFF6D00, 0xFF5722, 0xFFFFFF] :
+                               enemy.type === 'ELITE' ? [0xFFA500, 0xFF6D00, 0xFFFFFF] :
+                               [enemy.color, 0xFFFFFF, 0xFFEB3B];
+            for (let i = 0; i < particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = (60 + Math.random() * 180) * (enemy.type === 'BOSS' ? 1.5 : 1);
+                const color = tintColors[Math.floor(Math.random() * tintColors.length)];
+                const size = (10 + Math.random() * 15) * (enemy.type === 'BOSS' ? 1.3 : 1);
+                this.particles.push({
+                    x: enemy.x, y: enemy.y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    color, size,
+                    life: 0.4 + Math.random() * 0.4,
+                    maxLife: 0.8,
+                    graphics: this.add.circle(enemy.x, enemy.y, size/3, color, 0.9).setDepth(12),
+                    useTexture: false
+                });
+            }
+            if (enemy.type === 'ELITE' || enemy.type === 'BOSS') {
+                const ringRadius = enemy.type === 'BOSS' ? 150 : 80;
+                const ringColor = enemy.type === 'BOSS' ? 0xFFD700 : 0xFFA500;
+                this.explosions.push({
+                    x: enemy.x, y: enemy.y,
+                    radius: ringRadius, color: ringColor,
+                    life: 0.4, maxLife: 0.4, graphics: null
+                });
+            }
         }
     }
     
@@ -1420,6 +1458,8 @@ export class GameScene extends Phaser.Scene {
         this.rerollCount = 0;
         soundManager.play('levelup');
         soundManager.playVoice('levelup');
+        // 升级金色闪光 + 轻微震动
+        if (this.fx) this.fx.spawnLevelUpFlash();
         this.generateLevelUpOptions();
         this.showLevelUpUI();
     }

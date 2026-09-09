@@ -79,7 +79,12 @@ export class ExtraFeaturesManager {
                 if (enemy.alive) {
                     scene.time.delayedCall(Math.random() * 500, () => {
                         if (enemy.alive) {
-                            scene.lightningBolts.push({ x1: enemy.x, y1: enemy.y - 200, x2: enemy.x, y2: enemy.y, life: 0.3, maxLife: 0.3, color: 0x00BCD4 });
+                            // 雷神之怒：分支闪电特效
+                            if (scene.spawnLightning) {
+                                scene.spawnLightning(enemy.x, enemy.y - 200, enemy.x, enemy.y, 0x00BCD4, { width: 6, life: 0.35, branches: 4, glowSize: 40 });
+                            } else {
+                                scene.lightningBolts.push({ x1: enemy.x, y1: enemy.y - 200, x2: enemy.x, y2: enemy.y, life: 0.3, maxLife: 0.3, color: 0x00BCD4 });
+                            }
                             enemy.takeDamage(ult.damage);
                         }
                     });

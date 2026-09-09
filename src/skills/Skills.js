@@ -260,12 +260,16 @@ export class LightningSkill extends Skill {
                     current.takeDamage(this.damage);
                     scene.addFloatingText(current.x, current.y - current.radius,
                         Math.floor(this.damage).toString(), 0xFFFF00, 18);
-                    // 绘制闪电路径
-                    scene.lightningBolts = scene.lightningBolts || [];
-                    scene.lightningBolts.push({
-                        x1: prevX, y1: prevY, x2: current.x, y2: current.y,
-                        life: 0.15, maxLife: 0.15, color: 0xFFFF00
-                    });
+                    // 绘制闪电路径（使用 FXManager 分支闪电）
+                    if (scene.spawnLightning) {
+                        scene.spawnLightning(prevX, prevY, current.x, current.y, 0xFFFF00, { width: 4, life: 0.2, branches: 2, glowSize: 25 });
+                    } else {
+                        scene.lightningBolts = scene.lightningBolts || [];
+                        scene.lightningBolts.push({
+                            x1: prevX, y1: prevY, x2: current.x, y2: current.y,
+                            life: 0.15, maxLife: 0.15, color: 0xFFFF00
+                        });
+                    }
                     prevX = current.x; prevY = current.y;
                     // 找下一个目标
                     let next = null;
